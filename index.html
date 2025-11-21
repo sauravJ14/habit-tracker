@@ -1,730 +1,583 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Monk Mode Habit Tracker</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Markdown parser for nice AI output -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <style>
-        :root {
-            --primary-green: #6aa84f;
-            --bg-color: #f0f2f5;
-            --card-bg: #ffffff;
-            --border-color: #e0e0e0;
-            --text-primary: #202124;
-            --text-secondary: #5f6368;
-            --header-bg: #f8f9fa;
-        }
+import React, { useState, useEffect, useMemo } from 'react';
+import { ChevronLeft, ChevronRight, TrendingUp, Trophy, Activity, Plus, Trash2, Loader2, Leaf, Skull, Check, X, ShieldCheck } from 'lucide-react';
+import { initializeApp } from "firebase/app";
+import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "firebase/auth";
+import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
 
-        * { box-sizing: border-box; }
+// --- Firebase Initialization ---
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-primary);
-            margin: 0;
-            padding: 30px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-        }
+export default function App() {
+  // Auth State
+  const [user, setUser] = useState(null);
+  
+  // App State
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [habits, setHabits] = useState([]);
+  const [trackerData, setTrackerData] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [newHabitText, setNewHabitText] = useState("");
+  const [newHabitType, setNewHabitType] = useState('good'); // 'good' or 'bad'
 
-        .main-container {
-            width: 100%;
-            max-width: 1200px;
-            display: flex;
-            flex-direction: column;
-            gap: 24px;
+  // --- 1. Authentication Effect ---
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
         }
-
-        /* --- HEADER --- */
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: var(--card-bg);
-            padding: 20px 24px;
-            border-radius: 12px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-        }
-
-        h1 {
-            font-size: 24px;
-            font-weight: 700;
-            margin: 0;
-            color: #333;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .month-badge {
-            background: #e6f4ea;
-            color: var(--primary-green);
-            font-size: 12px;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .controls { display: flex; gap: 10px; }
-
-        button {
-            padding: 8px 16px;
-            border: 1px solid #dadce0;
-            border-radius: 6px;
-            background: white;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 500;
-            color: #3c4043;
-            transition: all 0.2s;
-        }
-
-        button:hover { background-color: #f1f3f4; border-color: #cfd1d4; }
-        button.danger { color: #d93025; border-color: #f28b82; }
-        button.danger:hover { background-color: #fce8e6; }
-
-        .btn-ai {
-            background: linear-gradient(135deg, #6aa84f 0%, #4ca84f 100%);
-            color: white;
-            border: none;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .btn-ai:hover {
-            background: linear-gradient(135deg, #5a983f 0%, #3c983f 100%);
-            box-shadow: 0 2px 5px rgba(106, 168, 79, 0.3);
-        }
-
-        /* --- TRACKER GRID --- */
-        .tracker-card {
-            background: var(--card-bg);
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-            overflow: hidden;
-            padding: 0;
-        }
-
-        .table-scroll {
-            overflow-x: auto;
-            width: 100%;
-            padding-bottom: 5px;
-        }
-
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            white-space: nowrap;
-            font-size: 13px;
-        }
-
-        th, td {
-            border: 1px solid var(--border-color);
-            text-align: center;
-            height: 36px;
-            min-width: 36px;
-        }
-
-        /* Sticky Habit Column */
-        th:first-child, td:first-child {
-            text-align: left;
-            min-width: 200px;
-            padding-left: 16px;
-            position: sticky;
-            left: 0;
-            background: var(--card-bg);
-            z-index: 10;
-            border-right: 2px solid #e0e0e0;
-            font-weight: 500;
-        }
-
-        th:first-child { background: var(--header-bg); z-index: 20; }
-        th { background: var(--header-bg); color: var(--text-secondary); font-weight: 600; }
-
-        /* Checkboxes */
-        td.check-cell { cursor: pointer; transition: background 0.1s; }
-        td.check-cell:hover { background-color: #f8f9fa; }
-        input[type="checkbox"] {
-            accent-color: var(--primary-green);
-            width: 16px; height: 16px; cursor: pointer;
-        }
-
-        /* Stats Row Styling */
-        .stats-row td { font-weight: 600; font-size: 12px; }
-        .stats-row.progress td { color: var(--text-secondary); }
-        
-        /* --- DASHBOARD GRID --- */
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 24px;
-        }
-
-        .chart-card {
-            background: var(--card-bg);
-            padding: 24px;
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .chart-card.full-width {
-            grid-column: 1 / -1;
-        }
-
-        .chart-header {
-            margin-bottom: 16px;
-            display: flex;
-            justify-content: space-between;
-            align-items: baseline;
-        }
-
-        .chart-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: #333;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .chart-stat {
-            font-size: 24px;
-            font-weight: 700;
-            color: var(--primary-green);
-        }
-
-        .chart-container {
-            position: relative;
-            height: 250px;
-            width: 100%;
-        }
-
-        /* Sparkline inside table */
-        .spark-bar {
-            background: #eee; height: 100%; width: 100%; position: relative;
-        }
-        .spark-fill {
-            background: var(--primary-green); height: 100%; width: 0%; transition: width 0.5s;
-        }
-        .spark-text {
-            position: absolute; width: 100%; text-align: center; top: 50%; transform: translateY(-50%); font-size: 10px; color: #000; opacity: 0.7;
-        }
-
-        /* AI Report Styling */
-        #ai-coach-content {
-            background: #f8fcf8;
-            border: 1px solid #e6f4ea;
-            border-radius: 8px;
-            padding: 20px;
-            min-height: 100px;
-            font-size: 14px;
-            line-height: 1.6;
-            color: #373a3c;
-        }
-        #ai-coach-content h3 { margin-top: 0; color: #2d5e2e; }
-        #ai-coach-content ul { padding-left: 20px; }
-        #ai-coach-content li { margin-bottom: 8px; }
-
-        /* Modal */
-        #modal-overlay {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;
-        }
-        #modal-box {
-            background: white; padding: 24px; border-radius: 8px; width: 320px; text-align: center;
-        }
-        .modal-actions { margin-top: 20px; display: flex; justify-content: center; gap: 10px; }
-
-        @media (max-width: 768px) {
-            body { padding: 10px; }
-            .dashboard-grid { grid-template-columns: 1fr; }
-            .main-container { gap: 16px; }
-        }
-    </style>
-</head>
-<body>
-
-<div class="main-container">
+      } catch (error) {
+        console.error("Auth failed:", error);
+      }
+    };
+    initAuth();
     
-    <!-- Header -->
-    <div class="header">
-        <h1>November Tracker <span class="month-badge">Monk Mode</span></h1>
-        <div class="controls">
-            <button onclick="copyStats()">Share Stats</button>
-            <button class="danger" onclick="confirmReset()">Reset</button>
-        </div>
-    </div>
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+    });
+    return () => unsubscribe();
+  }, []);
 
-    <!-- The Big Tracker -->
-    <div class="tracker-card">
-        <div class="table-scroll">
-            <table id="habitTable">
-                <thead>
-                    <tr id="headerRow">
-                        <th>Habits</th>
-                        <!-- Dates inserted by JS -->
-                        <th style="min-width: 60px; background: #f8f9fa;">Goal</th>
-                        <th style="min-width: 60px; background: #f8f9fa;">Done</th>
-                        <th style="min-width: 100px; background: #f8f9fa;">Progress</th>
-                    </tr>
-                </thead>
-                <tbody id="tableBody">
-                    <!-- Habits inserted by JS -->
-                </tbody>
-                <tfoot id="tableFooter">
-                    <!-- Stats inserted by JS -->
-                </tfoot>
-            </table>
-        </div>
-    </div>
+  // --- 2. Data Fetching Effect (Real-time) ---
+  useEffect(() => {
+    if (!user) return;
 
-    <!-- Analytics Dashboard -->
-    <div class="dashboard-grid">
+    // A. Fetch Habits
+    const habitsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'habits');
+    const unsubHabits = onSnapshot(habitsRef, (snapshot) => {
+      const loadedHabits = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      loadedHabits.sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+      setHabits(loadedHabits);
+      setLoading(false);
+    }, (error) => console.error("Habits listener error:", error));
 
-        <!-- AI Coach Card (Full Width) -->
-        <div class="chart-card full-width">
-            <div class="chart-header">
-                <span class="chart-title">AI Performance Coach ✨</span>
-                <button class="btn-ai" onclick="generateAIReport()">
-                    <span>Analyze My Discipline</span>
-                    <span>✨</span>
-                </button>
-            </div>
-            <div id="ai-coach-content">
-                <p style="color: #777; font-style: italic;">Click "Analyze My Discipline" to get a personalized performance review from Gemini 2.5.</p>
-            </div>
-        </div>
-        
-        <!-- Chart 1: Daily Consistency Trend -->
-        <div class="chart-card">
-            <div class="chart-header">
-                <span class="chart-title">Daily Consistency Trend</span>
-                <span class="chart-stat" id="avg-daily-stat">0%</span>
-            </div>
-            <div class="chart-container">
-                <canvas id="trendChart"></canvas>
-            </div>
-        </div>
+    // B. Fetch Completions
+    const completionsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'completions');
+    const unsubCompletions = onSnapshot(completionsRef, (snapshot) => {
+      const data = {};
+      snapshot.docs.forEach(doc => {
+        data[doc.id] = true;
+      });
+      setTrackerData(data);
+    }, (error) => console.error("Completions listener error:", error));
 
-        <!-- Chart 2: Habit Strength Breakdown -->
-        <div class="chart-card">
-            <div class="chart-header">
-                <span class="chart-title">Habit Strength</span>
-                <span class="chart-stat" id="best-habit-stat">-</span>
-            </div>
-            <div class="chart-container">
-                <canvas id="barChart"></canvas>
-            </div>
-        </div>
+    return () => {
+      unsubHabits();
+      unsubCompletions();
+    };
+  }, [user]);
 
-        <!-- Chart 3: Overall Completion -->
-        <div class="chart-card">
-            <div class="chart-header">
-                <span class="chart-title">Month Completion</span>
-                <span class="chart-stat" id="total-completion-stat">0%</span>
-            </div>
-            <div class="chart-container">
-                <canvas id="doughnutChart"></canvas>
-            </div>
-        </div>
 
-    </div>
+  // --- Actions ---
 
-</div>
+  const handleAddHabit = async (e) => {
+    e.preventDefault();
+    if (!newHabitText.trim() || !user) return;
 
-<!-- Modal -->
-<div id="modal-overlay">
-    <div id="modal-box">
-        <p id="modal-message">Are you sure?</p>
-        <div class="modal-actions">
-            <button onclick="closeModal()">Cancel</button>
-            <button class="danger" onclick="performReset()">Yes, Reset</button>
-        </div>
-    </div>
-</div>
-
-<script>
-    // --- CONFIG ---
-    const daysInMonth = 30; // November
-    const habits = [
-        "Wake up at 05:00 ⏰",
-        "Gym ᕦ(ò_óˇ)ᕤ",
-        "Reading / Learning 📖",
-        "Day Planning 🗓️",
-        "Budget Tracking 💰",
-        "Project Work 🎯",
-        "No Alcohol 🚫",
-        "Social Media Detox 🌿",
-        "Goal Journaling ✍️",
-        "Cold Shower 🧊"
-    ];
-
-    // State
-    let habitData = JSON.parse(localStorage.getItem('monkModeData_v4')) || {};
-    
-    // Chart Instances
-    let trendChart, barChart, doughnutChart;
-
-    // --- INIT ---
-    function init() {
-        renderTable();
-        initCharts();
-        updateAll();
+    try {
+      await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'habits'), {
+        label: newHabitText,
+        type: newHabitType,
+        createdAt: serverTimestamp()
+      });
+      setNewHabitText("");
+    } catch (err) {
+      console.error("Error adding habit:", err);
     }
+  };
 
-    function renderTable() {
-        const headerRow = document.getElementById('headerRow');
-        const tableBody = document.getElementById('tableBody');
-        const footer = document.getElementById('tableFooter');
-        const goalHeader = headerRow.children[1];
+  const handleDeleteHabit = async (habitId) => {
+    if (!user) return;
+    if (confirm("Delete this habit?")) {
+      try {
+        await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'habits', habitId));
+      } catch (err) {
+        console.error("Error deleting habit:", err);
+      }
+    }
+  };
 
-        // 1. Header Dates
-        for(let i=1; i<=daysInMonth; i++) {
-            let th = document.createElement('th');
-            th.innerText = i;
-            headerRow.insertBefore(th, goalHeader);
-        }
+  const toggleHabit = async (day, habitId) => {
+    if (!user) return;
+    
+    const key = `${year}-${month}-${day}_${habitId}`;
+    const isDone = !!trackerData[key];
+    const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'completions', key);
 
-        // 2. Habit Rows
-        habits.forEach((habit, idx) => {
-            let tr = document.createElement('tr');
-            
-            // Name
-            let tdName = document.createElement('td');
-            tdName.innerText = habit;
-            tr.appendChild(tdName);
+    try {
+      if (isDone) {
+        await deleteDoc(ref);
+      } else {
+        await setDoc(ref, {
+          habitId,
+          day,
+          month,
+          year,
+          completedAt: serverTimestamp()
+        });
+      }
+    } catch (err) {
+      console.error("Error toggling habit:", err);
+    }
+  };
 
-            // Checkboxes
-            for(let d=1; d<=daysInMonth; d++) {
-                let td = document.createElement('td');
-                td.className = 'check-cell';
-                td.onclick = (e) => {
-                    if(e.target.type !== 'checkbox') {
-                        let cb = td.querySelector('input');
-                        cb.checked = !cb.checked;
-                        handleCheck(idx, d, cb.checked);
-                    }
-                };
-                
-                let cb = document.createElement('input');
-                cb.type = 'checkbox';
-                if(habitData[`${idx}-${d}`]) cb.checked = true;
-                cb.onchange = (e) => handleCheck(idx, d, e.target.checked);
-                
-                td.appendChild(cb);
-                tr.appendChild(td);
-            }
+  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
 
-            // Analysis Cols (FIXED: Created via DOM to preserve Event Listeners)
-            
-            // Goal
-            let tdGoal = document.createElement('td');
-            tdGoal.style.fontWeight = 'bold';
-            tdGoal.style.color = '#666';
-            tdGoal.innerText = daysInMonth;
-            tr.appendChild(tdGoal);
+  // --- Calculations ---
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const monthName = currentDate.toLocaleString('default', { month: 'long' });
+  const currentDayNum = new Date().getDate();
+  const isCurrentMonth = new Date().getMonth() === month && new Date().getFullYear() === year;
 
-            // Actual
-            let tdActual = document.createElement('td');
-            tdActual.className = 'row-actual';
-            tdActual.style.fontWeight = 'bold';
-            tdActual.innerText = '0';
-            tr.appendChild(tdActual);
+  const isCompleted = (day, habitId) => {
+    const key = `${year}-${month}-${day}_${habitId}`;
+    return !!trackerData[key];
+  };
 
-            // Progress
-            let tdProgress = document.createElement('td');
-            tdProgress.innerHTML = `
-                <div class="spark-bar">
-                    <div class="spark-fill"></div>
-                    <div class="spark-text">0%</div>
+  // Helpers to split habits
+  const goodHabits = habits.filter(h => (h.type || 'good') === 'good');
+  const badHabits = habits.filter(h => h.type === 'bad');
+
+  const getDailyStats = (day) => {
+    let goodDone = 0;
+    let badDone = 0;
+
+    goodHabits.forEach(habit => {
+      if (isCompleted(day, habit.id)) goodDone++;
+    });
+    badHabits.forEach(habit => {
+      if (isCompleted(day, habit.id)) badDone++;
+    });
+
+    const totalGood = goodHabits.length || 1;
+    const percent = Math.round((goodDone / totalGood) * 100);
+
+    return { goodDone, badDone, percent };
+  };
+
+  const trendData = useMemo(() => {
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      const day = i + 1;
+      return getDailyStats(day).percent;
+    });
+  }, [trackerData, month, year, daysInMonth, habits]);
+
+  const badHabitTrendData = useMemo(() => {
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      const day = i + 1;
+      return getDailyStats(day).badDone;
+    });
+  }, [trackerData, month, year, daysInMonth, habits]);
+
+  // Chart Logic (Good Habits)
+  const getTrendPath = () => {
+    if (trendData.length === 0) return "";
+    const maxVal = 100;
+    const width = 260; // Internal coordinate system width
+    const height = 100; // Internal coordinate system height
+    const stepX = width / (daysInMonth - 1 || 1);
+    
+    const points = trendData.map((val, i) => {
+      const x = i * stepX;
+      const y = height - (val / maxVal) * height;
+      return `${x},${y}`;
+    }).join(' ');
+    
+    return `M0,${height} L${points} L${width},${height} Z`;
+  };
+  
+  const getTrendLine = () => {
+    if (trendData.length === 0) return "";
+    const maxVal = 100;
+    const width = 260;
+    const height = 100;
+    const stepX = width / (daysInMonth - 1 || 1);
+    
+    const points = trendData.map((val, i) => {
+      const x = i * stepX;
+      const y = height - (val / maxVal) * height;
+      return `${x},${y}`;
+    }).join(' ');
+    return `M${points}`;
+  };
+
+  // Top Habit Logic
+  const bestHabit = useMemo(() => {
+    if (goodHabits.length === 0) return { label: "No Data", score: 0 };
+    let best = { ...goodHabits[0], score: 0 };
+    goodHabits.forEach(habit => {
+      let count = 0;
+      for (let d = 1; d <= daysInMonth; d++) {
+        if (isCompleted(d, habit.id)) count++;
+      }
+      const score = Math.round((count / daysInMonth) * 100);
+      if (score > best.score) {
+        best = { ...habit, score };
+      }
+    });
+    return best;
+  }, [trackerData, month, year, daysInMonth, goodHabits]);
+
+  const totalGoodHabits = goodHabits.length;
+  const totalCells = daysInMonth * totalGoodHabits;
+  const totalCompleted = Array.from({ length: daysInMonth }, (_, i) => i + 1)
+    .reduce((acc, day) => acc + getDailyStats(day).goodDone, 0);
+  const monthlyCompletionRate = (totalCells > 0) ? Math.round((totalCompleted / totalCells) * 100) : 0;
+
+  const totalIncidents = badHabitTrendData.reduce((a, b) => a + b, 0);
+
+  // --- Render ---
+
+  if (loading && !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 text-zinc-600">
+        <Loader2 className="w-8 h-8 animate-spin text-zinc-900" />
+        <span className="ml-2 font-medium text-sm">Syncing...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-zinc-50 p-2 sm:p-8 font-sans flex flex-col items-center text-zinc-900">
+      
+      <div className="w-full max-w-[1400px] bg-white rounded-xl sm:rounded-2xl shadow-sm border border-zinc-200 overflow-hidden flex flex-col mb-6 sm:mb-8 transition-all">
+        
+        {/* Header */}
+        <div className="px-4 py-4 sm:px-6 sm:py-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-zinc-100">
+          <div className="flex items-center gap-4">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-900">
+                {monthName} Tracker
+              </h1>
+              <p className="text-xs text-zinc-500 font-medium mt-0.5">
+                {user ? 'Sync Active' : 'Offline'} • {year}
+              </p>
+            </div>
+            <span className="hidden sm:inline-flex bg-zinc-100 text-zinc-600 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border border-zinc-200">
+              Monk Mode
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1 bg-zinc-100/80 p-1 rounded-lg border border-zinc-200">
+            <button onClick={prevMonth} className="p-1.5 hover:bg-white hover:shadow-sm rounded-md transition-all text-zinc-500 hover:text-zinc-900" aria-label="Previous Month">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-xs font-bold text-zinc-700 px-3 min-w-[60px] text-center tabular-nums">{year}</span>
+            <button onClick={nextMonth} className="p-1.5 hover:bg-white hover:shadow-sm rounded-md transition-all text-zinc-500 hover:text-zinc-900" aria-label="Next Month">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Grid Container - Mobile Optimized with Sticky Column */}
+        <div className="w-full overflow-hidden relative">
+          <div className="overflow-x-auto scrollbar-hide">
+            <div className="min-w-max">
+              
+              {/* Grid Header - Days */}
+              <div className="flex border-b border-zinc-200 bg-zinc-50/50 sticky top-0 z-40 backdrop-blur-sm">
+                {/* Sticky 'Habits' Label Cell */}
+                <div className="w-32 sm:w-64 flex-shrink-0 p-3 font-semibold text-zinc-500 text-[10px] sm:text-xs pl-4 sm:pl-6 flex items-end pb-2 bg-zinc-50/95 sticky left-0 z-50 shadow-[1px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                  HABITS
                 </div>
-            `;
-            tr.appendChild(tdProgress);
+                
+                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => (
+                  <div key={day} className={`w-10 flex-shrink-0 flex flex-col items-center justify-end pb-2 border-l border-zinc-100 font-medium text-xs ${day === currentDayNum && isCurrentMonth ? 'text-indigo-600 font-bold' : 'text-zinc-500'}`}>
+                    {day}
+                    {day === currentDayNum && isCurrentMonth && <div className="h-1 w-1 bg-indigo-600 rounded-full mt-1"></div>}
+                  </div>
+                ))}
+              </div>
 
-            tableBody.appendChild(tr);
-        });
+              {/* --- GOOD HABITS SECTION --- */}
+              {goodHabits.length > 0 && (
+                <div className="group/section">
+                  <div className="flex bg-emerald-50/40 border-b border-emerald-100/50 sticky left-0 z-30">
+                    {/* Sticky Header for Section */}
+                    <div className="w-32 sm:w-64 flex-shrink-0 py-2 px-4 sm:px-6 text-[10px] font-bold text-emerald-700/80 uppercase tracking-widest flex items-center gap-2 bg-emerald-50/95 sticky left-0 shadow-[1px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                      <Leaf className="w-3 h-3" /> <span className="hidden sm:inline">Building</span><span className="sm:hidden">Build</span>
+                    </div>
+                    {/* Spacer for the rest of the row */}
+                    <div className="flex-1 min-w-[1000px]"></div> 
+                  </div>
 
-        // 3. Footer Rows
-        createFooterRow(footer, "Daily Success %", "stats-progress", "%");
-        createFooterRow(footer, "Done", "stats-done", "");
-        createFooterRow(footer, "Not Done", "stats-missed", "");
-    }
+                  {goodHabits.map((habit, idx) => (
+                    <div key={habit.id} className={`flex border-b border-zinc-100 hover:bg-zinc-50 transition-colors group/row ${idx === goodHabits.length - 1 ? 'border-b-0' : ''}`}>
+                      {/* Sticky Habit Name Cell */}
+                      <div className="w-32 sm:w-64 flex-shrink-0 p-2 sm:p-3 text-zinc-700 text-xs sm:text-sm font-medium pl-4 sm:pl-6 flex items-center justify-between pr-2 sm:pr-4 border-l-2 border-transparent hover:border-emerald-400 transition-all bg-white sticky left-0 z-30 shadow-[1px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                        <span className="truncate">{habit.label}</span>
+                        <button onClick={() => handleDeleteHabit(habit.id)} className="hidden sm:block opacity-0 group-hover/row:opacity-100 text-zinc-300 hover:text-red-500 transition-all p-1">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                        {/* Mobile Delete (Always visible if needed, or handled via long press - keep simple for now) */}
+                        <button onClick={() => handleDeleteHabit(habit.id)} className="sm:hidden text-zinc-200 hover:text-red-500 p-1">
+                           <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
 
-    function createFooterRow(footer, title, type, suffix) {
-        let tr = document.createElement('tr');
-        tr.className = `stats-row ${type}`;
-        let tdTitle = document.createElement('td');
-        tdTitle.innerText = title;
-        tr.appendChild(tdTitle);
+                      {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+                        const checked = isCompleted(day, habit.id);
+                        return (
+                          <div key={day} className="w-10 flex-shrink-0 border-l border-zinc-100 flex items-center justify-center py-2.5 bg-white group-hover/row:bg-zinc-50/50 transition-colors">
+                            <button
+                              onClick={() => toggleHabit(day, habit.id)}
+                              className={`
+                                w-6 h-6 rounded-md transition-all duration-200 flex items-center justify-center border
+                                focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:ring-offset-1
+                                ${checked 
+                                  ? 'bg-emerald-500 border-emerald-600 text-white shadow-sm shadow-emerald-200 hover:bg-emerald-600 hover:scale-105' 
+                                  : 'bg-white border-zinc-200 text-transparent hover:border-emerald-300 hover:bg-emerald-50/30'
+                                }
+                              `}
+                            >
+                              <Check className={`w-3.5 h-3.5 transition-transform duration-300 ${checked ? 'scale-100' : 'scale-50'}`} strokeWidth={3} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              )}
 
-        for(let i=1; i<=daysInMonth; i++) {
-            let td = document.createElement('td');
-            td.className = `day-stat-${i}-${type}`;
-            td.innerText = `0${suffix}`;
-            tr.appendChild(td);
-        }
-        // Spacers
-        tr.appendChild(document.createElement('td'));
-        tr.appendChild(document.createElement('td'));
-        tr.appendChild(document.createElement('td'));
+              {/* --- BAD HABITS SECTION --- */}
+              {badHabits.length > 0 && (
+                <div className="group/section border-t border-zinc-200">
+                  <div className="flex bg-rose-50/40 border-b border-rose-100/50 sticky left-0 z-30">
+                     <div className="w-32 sm:w-64 flex-shrink-0 py-2 px-4 sm:px-6 text-[10px] font-bold text-rose-700/80 uppercase tracking-widest flex items-center gap-2 bg-rose-50/95 sticky left-0 shadow-[1px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                      <Skull className="w-3 h-3" /> <span className="hidden sm:inline">Breaking</span><span className="sm:hidden">Break</span>
+                    </div>
+                    <div className="flex-1 min-w-[1000px]"></div>
+                  </div>
+                  {badHabits.map((habit, idx) => (
+                    <div key={habit.id} className="flex border-b border-zinc-100 hover:bg-zinc-50 transition-colors group/row">
+                      <div className="w-32 sm:w-64 flex-shrink-0 p-2 sm:p-3 text-zinc-700 text-xs sm:text-sm font-medium pl-4 sm:pl-6 flex items-center justify-between pr-2 sm:pr-4 border-l-2 border-transparent hover:border-rose-400 transition-all bg-white sticky left-0 z-30 shadow-[1px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                        <span className="truncate">{habit.label}</span>
+                        <button onClick={() => handleDeleteHabit(habit.id)} className="hidden sm:block opacity-0 group-hover/row:opacity-100 text-zinc-300 hover:text-red-500 transition-all p-1">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                         <button onClick={() => handleDeleteHabit(habit.id)} className="sm:hidden text-zinc-200 hover:text-red-500 p-1">
+                           <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                      {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+                        const checked = isCompleted(day, habit.id);
+                        return (
+                          <div key={day} className="w-10 flex-shrink-0 border-l border-zinc-100 flex items-center justify-center py-2.5 bg-white group-hover/row:bg-zinc-50/50 transition-colors">
+                            <button
+                              onClick={() => toggleHabit(day, habit.id)}
+                              className={`
+                                w-6 h-6 rounded-md transition-all duration-200 flex items-center justify-center border
+                                focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:ring-offset-1
+                                ${checked 
+                                  ? 'bg-rose-500 border-rose-600 text-white shadow-sm shadow-rose-200 hover:bg-rose-600 hover:scale-105' 
+                                  : 'bg-white border-zinc-200 text-transparent hover:border-rose-300 hover:bg-rose-50/30'
+                                }
+                              `}
+                            >
+                               <X className={`w-3.5 h-3.5 transition-transform duration-300 ${checked ? 'scale-100' : 'scale-50'}`} strokeWidth={3} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add Habit Row */}
+              <div className="flex border-t border-zinc-200 bg-zinc-50/50">
+                <div className="w-32 sm:w-64 flex-shrink-0 p-2 sm:p-4 pl-4 sm:pl-6 sticky left-0 z-30 bg-zinc-50 shadow-[1px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                  <form onSubmit={handleAddHabit} className="flex flex-col gap-2 sm:gap-3">
+                    <div className="flex items-center gap-2 relative">
+                      <input 
+                        type="text" 
+                        value={newHabitText}
+                        onChange={(e) => setNewHabitText(e.target.value)}
+                        placeholder="New..." 
+                        className="flex-1 bg-white border border-zinc-200 rounded-md px-2 py-1.5 text-xs sm:text-sm focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-400 outline-none placeholder:text-zinc-400 shadow-sm transition-all"
+                      />
+                      <button 
+                        type="submit"
+                        disabled={!newHabitText.trim()}
+                        className="bg-zinc-900 hover:bg-zinc-800 text-white p-1.5 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm flex-shrink-0"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setNewHabitType('good')}
+                          className={`py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wide flex items-center justify-center gap-1.5 transition-all border ${newHabitType === 'good' ? 'bg-emerald-100 border-emerald-200 text-emerald-800 shadow-inner' : 'bg-white border-zinc-200 text-zinc-500 hover:bg-zinc-50 hover:border-zinc-300'}`}
+                        >
+                          <Leaf className="w-3 h-3" /> <span className="hidden sm:inline">Build</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setNewHabitType('bad')}
+                          className={`py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wide flex items-center justify-center gap-1.5 transition-all border ${newHabitType === 'bad' ? 'bg-rose-100 border-rose-200 text-rose-800 shadow-inner' : 'bg-white border-zinc-200 text-zinc-500 hover:bg-zinc-50 hover:border-zinc-300'}`}
+                        >
+                          <Skull className="w-3 h-3" /> <span className="hidden sm:inline">Break</span>
+                        </button>
+                    </div>
+                  </form>
+                </div>
+                <div className="flex-1 bg-zinc-50/50 border-l border-zinc-200 min-w-[1000px]"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* --- ANALYTICS DASHBOARD --- */}
+      <div className="w-full max-w-[1400px] grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 sm:gap-6">
         
-        footer.appendChild(tr);
-    }
+        {/* 1. Momentum Chart */}
+        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 h-64 flex flex-col shadow-sm border border-zinc-200">
+          <div className="flex justify-between items-start mb-4">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-emerald-50 rounded-md"><Activity className="w-4 h-4 text-emerald-600" /></div>
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-900">Momentum</h3>
+                <p className="text-xs text-zinc-500">Good habit completion %</p>
+              </div>
+            </div>
+            <div className="text-2xl font-bold text-emerald-600">
+               {Math.round(trendData.reduce((a,b)=>a+b,0) / (trendData.filter(x=>x>0).length || 1))}%
+            </div>
+          </div>
+          <div className="flex-1 w-full relative">
+            <svg className="w-full h-full overflow-visible" viewBox="0 0 280 120" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="chartGradient" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stopColor="#10b981" stopOpacity="0.2" />
+                  <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              <line x1="0" y1="0" x2="260" y2="0" stroke="#f4f4f5" strokeWidth="1" />
+              <text x="265" y="5" className="text-[8px] fill-zinc-300" alignmentBaseline="middle">100%</text>
+              <line x1="0" y1="50" x2="260" y2="50" stroke="#f4f4f5" strokeWidth="1" />
+              <text x="265" y="55" className="text-[8px] fill-zinc-300" alignmentBaseline="middle">50%</text>
+              <line x1="0" y1="100" x2="260" y2="100" stroke="#f4f4f5" strokeWidth="1" />
+              <text x="265" y="105" className="text-[8px] fill-zinc-300" alignmentBaseline="middle">0%</text>
+              <path d={getTrendPath()} fill="url(#chartGradient)" />
+              <path d={getTrendLine()} fill="none" stroke="#10b981" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+              <text x="0" y="115" className="text-[8px] fill-zinc-400" textAnchor="start">Day 1</text>
+              <text x="130" y="115" className="text-[8px] fill-zinc-400" textAnchor="middle">Day 15</text>
+              <text x="260" y="115" className="text-[8px] fill-zinc-400" textAnchor="end">Day {daysInMonth}</text>
+            </svg>
+          </div>
+        </div>
 
-    // --- LOGIC ---
+        {/* 2. Resistance Chart */}
+        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 h-64 flex flex-col shadow-sm border border-zinc-200">
+          <div className="flex justify-between items-start mb-4">
+             <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-rose-50 rounded-md"><ShieldCheck className="w-4 h-4 text-rose-600" /></div>
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-900">Resistance</h3>
+                <p className="text-xs text-zinc-500">Bad habit incidents</p>
+              </div>
+            </div>
+            <div className="text-2xl font-bold text-rose-600">
+               {totalIncidents} <span className="text-xs font-normal text-zinc-400">slips</span>
+            </div>
+          </div>
+          <div className="flex-1 w-full flex items-end gap-1 relative pt-4 border-b border-zinc-100">
+             {badHabitTrendData.map((count, i) => {
+               const heightPct = Math.min((count / (badHabits.length || 1)) * 100, 100);
+               return (
+                 <div key={i} className="flex-1 flex flex-col justify-end group relative h-full">
+                   <div 
+                    className={`w-full min-w-[4px] rounded-t-sm transition-all duration-500 ${count > 0 ? 'bg-rose-400' : 'bg-zinc-100'}`}
+                    style={{ height: `${count > 0 ? heightPct : 5}%` }}
+                   ></div>
+                 </div>
+               );
+             })}
+             <div className="absolute bottom-[5%] left-0 right-0 border-b border-dashed border-emerald-300 opacity-50 pointer-events-none"></div>
+             <span className="absolute right-0 bottom-[6%] text-[9px] text-emerald-500 font-medium">Target (0)</span>
+          </div>
+          <div className="flex justify-between text-[10px] text-zinc-400 mt-2">
+             <span>Day 1</span>
+             <span>Day {daysInMonth}</span>
+          </div>
+        </div>
 
-    function handleCheck(habitIdx, day, isChecked) {
-        if(isChecked) habitData[`${habitIdx}-${day}`] = true;
-        else delete habitData[`${habitIdx}-${day}`];
-        
-        localStorage.setItem('monkModeData_v4', JSON.stringify(habitData));
-        updateAll();
-    }
+         {/* 3. Progress Donut */}
+         <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 h-64 flex flex-col shadow-sm border border-zinc-200">
+           <div className="flex justify-between items-start">
+             <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-indigo-50 rounded-md"><TrendingUp className="w-4 h-4 text-indigo-600" /></div>
+                <h3 className="text-sm font-semibold text-zinc-900">Monthly Goal</h3>
+             </div>
+             <span className="text-xs bg-zinc-100 px-2 py-1 rounded-full text-zinc-500 font-medium">{monthlyCompletionRate}%</span>
+           </div>
+           <div className="flex-1 flex items-center justify-center relative">
+              <div className="relative w-32 h-32">
+                 <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                    <path className="text-zinc-100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" />
+                    <path className="text-indigo-600 transition-all duration-1000 ease-out" 
+                      strokeDasharray={`${monthlyCompletionRate}, 100`}
+                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                 </svg>
+                 <div className="absolute inset-0 flex items-center justify-center flex-col">
+                    <span className="text-xl font-bold text-zinc-900">{totalCompleted}</span>
+                    <span className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">Checks</span>
+                 </div>
+              </div>
+           </div>
+        </div>
 
-    function updateAll() {
-        // 1. Calculate Table Data
-        const rows = document.querySelectorAll('#tableBody tr');
-        let dailyCounts = new Array(daysInMonth + 1).fill(0);
-        let habitCounts = new Array(habits.length).fill(0);
-        let totalChecks = 0;
+        {/* 4. Highlights */}
+        <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 h-64 flex flex-col shadow-sm border border-zinc-200">
+           <div className="flex items-center gap-2 mb-6">
+              <div className="p-1.5 bg-amber-50 rounded-md"><Trophy className="w-4 h-4 text-amber-600" /></div>
+              <h3 className="text-sm font-semibold text-zinc-900">Highlights</h3>
+           </div>
 
-        // Habit horizontal stats
-        rows.forEach((row, hIdx) => {
-            let hCount = 0;
-            for(let d=1; d<=daysInMonth; d++) {
-                if(habitData[`${hIdx}-${d}`]) {
-                    hCount++;
-                    dailyCounts[d]++;
-                    totalChecks++;
-                }
-            }
-            habitCounts[hIdx] = hCount;
+           <div className="space-y-4">
+             <div className="bg-zinc-50 rounded-xl p-4 flex items-center justify-between group hover:bg-amber-50/50 transition-colors">
+                <div>
+                   <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-1">Strongest Habit</p>
+                   <p className="font-bold text-zinc-800 truncate max-w-[140px]">{bestHabit.label.split(' ')[0]}</p>
+                </div>
+                <div className="text-right">
+                   <span className="text-lg font-bold text-amber-600">{bestHabit.score}%</span>
+                </div>
+             </div>
+             <div className="bg-zinc-50 rounded-xl p-4 flex items-center justify-between group hover:bg-emerald-50/50 transition-colors">
+                <div>
+                   <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-1">Best Streak</p>
+                   <p className="font-bold text-zinc-800">Current Month</p>
+                </div>
+                <div className="text-right">
+                   <span className="text-lg font-bold text-emerald-600">{daysInMonth} <span className="text-xs">days</span></span>
+                </div>
+             </div>
+           </div>
+        </div>
 
-            // Update row UI
-            row.querySelector('.row-actual').innerText = hCount;
-            const pct = Math.round((hCount/daysInMonth)*100);
-            row.querySelector('.spark-fill').style.width = `${pct}%`;
-            row.querySelector('.spark-text').innerText = `${pct}%`;
-        });
+      </div>
 
-        // Daily vertical stats
-        for(let d=1; d<=daysInMonth; d++) {
-            const count = dailyCounts[d];
-            const pct = Math.round((count / habits.length) * 100);
-            
-            // Update Footer UI
-            const cell = document.querySelector(`.day-stat-${d}-stats-progress`);
-            if(cell) {
-                cell.innerText = `${pct}%`;
-                // Color logic
-                if(pct === 100) { cell.style.background = '#dff6dd'; cell.style.color = '#0d652d'; }
-                else if(pct > 0) { cell.style.background = '#f1f3f4'; cell.style.color = '#5f6368'; }
-                else { cell.style.background = 'transparent'; }
-            }
-
-            const doneCell = document.querySelector(`.day-stat-${d}-stats-done`);
-            if(doneCell) doneCell.innerText = count;
-            
-            const missedCell = document.querySelector(`.day-stat-${d}-stats-missed`);
-            if(missedCell) missedCell.innerText = habits.length - count;
-        }
-
-        // 2. Update Charts
-        updateCharts(dailyCounts, habitCounts, totalChecks);
-    }
-
-    // --- AI FUNCTIONALITY ---
-    async function generateAIReport() {
-        const contentDiv = document.getElementById('ai-coach-content');
-        contentDiv.innerHTML = `<p style="color: #6aa84f; font-weight: bold; animation: pulse 1.5s infinite;">🧠 Analyzing your habit patterns... please wait.</p>`;
-
-        // 1. Prepare Data Summary for AI
-        let reportData = "Habit Summary:\n";
-        habits.forEach((habit, idx) => {
-            let count = 0;
-            for(let d=1; d<=daysInMonth; d++) {
-                if(habitData[`${idx}-${d}`]) count++;
-            }
-            reportData += `- ${habit}: ${count}/${daysInMonth} days completed.\n`;
-        });
-
-        const systemPrompt = `
-            You are a strict but encouraging high-performance coach for a user in 'Monk Mode'. 
-            Review their habit tracker data. 
-            1. Identify the habit they are neglecting the most.
-            2. Give 3 specific, actionable, no-nonsense tips to fix their routine.
-            3. End with a short, punchy motivational quote.
-            Format the response in Markdown. Keep it concise.
-        `;
-
-        const userQuery = `Here is my habit data for this month: \n\n${reportData}\n\nAnalyze my discipline.`;
-
-        try {
-            const apiKey = ""; 
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: userQuery }] }],
-                    systemInstruction: { parts: [{ text: systemPrompt }] }
-                })
-            });
-
-            if (!response.ok) throw new Error('AI Busy');
-            
-            const data = await response.json();
-            const aiText = data.candidates[0].content.parts[0].text;
-            
-            // Render with Markdown
-            contentDiv.innerHTML = marked.parse(aiText);
-
-        } catch (error) {
-            console.error(error);
-            contentDiv.innerHTML = `<p style="color: #d93025;">⚠️ The AI Coach is currently offline or busy. Please try again in a moment. (Error: ${error.message})</p>`;
-        }
-    }
-
-
-    // --- CHARTS ---
-
-    function initCharts() {
-        const commonOptions = {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } }
-        };
-
-        // 1. Trend Chart
-        const ctx1 = document.getElementById('trendChart').getContext('2d');
-        // Create gradient
-        let gradient = ctx1.createLinearGradient(0, 0, 0, 400);
-        gradient.addColorStop(0, 'rgba(106, 168, 79, 0.5)');
-        gradient.addColorStop(1, 'rgba(106, 168, 79, 0.0)');
-
-        trendChart = new Chart(ctx1, {
-            type: 'line',
-            data: {
-                labels: Array.from({length: daysInMonth}, (_, i) => i + 1),
-                datasets: [{
-                    label: 'Daily Success %',
-                    data: [],
-                    borderColor: '#6aa84f',
-                    backgroundColor: gradient,
-                    fill: true,
-                    tension: 0.4,
-                    pointRadius: 2
-                }]
-            },
-            options: {
-                ...commonOptions,
-                scales: { y: { min: 0, max: 100 } }
-            }
-        });
-
-        // 2. Bar Chart
-        const ctx2 = document.getElementById('barChart').getContext('2d');
-        barChart = new Chart(ctx2, {
-            type: 'bar',
-            data: {
-                labels: habits,
-                datasets: [{
-                    label: 'Completion',
-                    data: [],
-                    backgroundColor: '#6aa84f',
-                    borderRadius: 4
-                }]
-            },
-            options: {
-                ...commonOptions,
-                indexAxis: 'y', // Horizontal bar
-                scales: { x: { max: daysInMonth } }
-            }
-        });
-
-        // 3. Doughnut Chart
-        const ctx3 = document.getElementById('doughnutChart').getContext('2d');
-        doughnutChart = new Chart(ctx3, {
-            type: 'doughnut',
-            data: {
-                labels: ['Done', 'Remaining'],
-                datasets: [{
-                    data: [0, 100],
-                    backgroundColor: ['#6aa84f', '#e0e0e0'],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                cutout: '75%',
-                plugins: { tooltip: { enabled: false } }
-            }
-        });
-    }
-
-    function updateCharts(dailyCounts, habitCounts, totalChecks) {
-        // Update Trend
-        const dailyPcts = dailyCounts.slice(1).map(c => Math.round((c/habits.length)*100));
-        trendChart.data.datasets[0].data = dailyPcts;
-        trendChart.update();
-        
-        const avgDaily = Math.round(dailyPcts.reduce((a,b)=>a+b,0) / daysInMonth);
-        document.getElementById('avg-daily-stat').innerText = `${avgDaily}%`;
-
-        // Update Bar
-        barChart.data.datasets[0].data = habitCounts;
-        barChart.update();
-
-        // Find best habit
-        const bestIdx = habitCounts.indexOf(Math.max(...habitCounts));
-        document.getElementById('best-habit-stat').innerText = habits[bestIdx].split(' ')[0]; // Just first word
-
-        // Update Doughnut
-        const totalPossible = daysInMonth * habits.length;
-        const totalPct = Math.round((totalChecks / totalPossible) * 100);
-        doughnutChart.data.datasets[0].data = [totalChecks, totalPossible - totalChecks];
-        doughnutChart.update();
-        document.getElementById('total-completion-stat').innerText = `${totalPct}%`;
-    }
-
-    // --- UTILS ---
-    function confirmReset() {
-        document.getElementById('modal-overlay').style.display = 'flex';
-    }
-    function closeModal() {
-        document.getElementById('modal-overlay').style.display = 'none';
-    }
-    function performReset() {
-        localStorage.removeItem('monkModeData_v4');
-        habitData = {};
-        document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
-        updateAll();
-        closeModal();
-    }
-    function copyStats() {
-        const pct = document.getElementById('total-completion-stat').innerText;
-        const text = `November Monk Mode Update: ${pct} Completed! 🎯`;
-        navigator.clipboard.writeText(text);
-        alert('Stats copied to clipboard: ' + text);
-    }
-
-    init();
-
-</script>
-
-<style>
-    @keyframes pulse {
-        0% { opacity: 0.6; }
-        50% { opacity: 1; }
-        100% { opacity: 0.6; }
-    }
-</style>
-</body>
-</html>
+      <style jsx>{`
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
+    </div>
+  );
+}
