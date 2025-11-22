@@ -4,15 +4,16 @@ import {
 } from 'recharts';
 import { 
   ChevronLeft, ChevronRight, Trash2, Check, X, Activity, 
-  TrendingUp, ShieldAlert, Trophy, Calendar, Leaf, Skull, Plus, LogOut 
+  TrendingUp, ShieldAlert, Trophy, Calendar, Leaf, Skull, Plus, LogOut, User
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
   onAuthStateChanged, 
   signInWithPopup, 
-  signInWithRedirect, // Import Redirect for mobile support
-  getRedirectResult,  // Import Result handler
+  signInWithRedirect,
+  signInAnonymously,
+  getRedirectResult,
   GoogleAuthProvider, 
   signOut,
   signInWithCustomToken
@@ -22,11 +23,6 @@ import {
 } from 'firebase/firestore';
 
 // --- Firebase Setup ---
-
-// 1. GO TO YOUR FIREBASE CONSOLE -> PROJECT SETTINGS
-// 2. COPY YOUR CONFIG OBJECT AND PASTE IT BELOW
-// 3. UNCOMMENT THE BLOCK BELOW
-
 const firebaseConfig = {
   apiKey: "AIzaSyANDPmkWdf0v3IjKH3ETGwj4WS9q8_0lRM",
   authDomain: "habit-tracker-88805.firebaseapp.com",
@@ -37,17 +33,17 @@ const firebaseConfig = {
   measurementId: "G-E7J2GH0FRT"
 };
 
-
-// Initialize Firebase (Conditional check is for the chat preview only)
+// Initialize Firebase
 const app = initializeApp(
   typeof __firebase_config !== 'undefined' 
-    ? JSON.parse(__firebase_config) // Use chat config if available
-    : (typeof firebaseConfig !== 'undefined' ? firebaseConfig : {}) // Use your config in production
+    ? JSON.parse(__firebase_config) 
+    : (typeof firebaseConfig !== 'undefined' ? firebaseConfig : {})
 );
 
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = 'habit-tracker-v1'; // Fixed ID for your app
+// Use environment app ID for data isolation, fallback to static for local dev
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'habit-tracker-v1';
 
 // --- Helper Functions ---
 const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
@@ -68,16 +64,20 @@ export default function HabitTracker() {
   // --- Auth & Data Fetching ---
   useEffect(() => {
     const initAuth = async () => {
-      // 1. Check if user is returning from a Google Redirect (Mobile fix)
       try {
+        // 1. Handle Redirect Result (for mobile Google auth flows)
         await getRedirectResult(auth);
       } catch (error) {
         console.error("Redirect login failed:", error);
       }
 
-      // 2. Handle chat-preview specific auth tokens if present
+      // 2. Handle Environment Token (for preview environment)
       if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
+        try {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } catch (e) {
+          console.error("Custom token failed", e);
+        }
       }
     };
     initAuth();
@@ -97,6 +97,7 @@ export default function HabitTracker() {
     }
     
     setLoading(true);
+    // Use the dynamic appId and user.uid for the path
     const q = query(collection(db, 'artifacts', appId, 'users', user.uid, 'habits'));
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -119,23 +120,32 @@ export default function HabitTracker() {
   const handleGoogleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider();
-      // Use Redirect for mobile compatibility instead of Popup
-      await signInWithRedirect(auth, provider);
+      await signInWithPopup(auth, provider);
     } catch (error) {
       console.error("Login failed:", error);
-      // Fallback to popup if redirect fails immediately (rare)
+      // Optional: fallback to redirect if popup fails
       try {
-         const provider = new GoogleAuthProvider();
-         await signInWithPopup(auth, provider);
-      } catch (popupError) {
-         alert("Login failed. Please try using a different browser.");
+        const provider = new GoogleAuthProvider();
+        await signInWithRedirect(auth, provider);
+      } catch (redirError) {
+        alert("Login failed. Try Guest Mode.");
       }
+    }
+  };
+
+  const handleGuestLogin = async () => {
+    try {
+      await signInAnonymously(auth);
+    } catch (error) {
+      console.error("Guest login failed:", error);
+      alert("Guest login failed.");
     }
   };
 
   const handleLogout = async () => {
     try {
       await signOut(auth);
+      setHabits([]); // Clear data from view immediately
     } catch (error) {
       console.error("Logout failed:", error);
     }
@@ -183,7 +193,7 @@ export default function HabitTracker() {
   };
 
   const deleteHabit = async (habitId) => {
-    if (!user || !confirm('Are you sure you want to delete this habit?')) return;
+    if (!user || !window.confirm('Are you sure you want to delete this habit?')) return;
     try {
       await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'habits', habitId));
     } catch (error) {
@@ -191,22 +201,25 @@ export default function HabitTracker() {
     }
   };
 
-  // --- Date Logic ---
+  // --- Date Logic (Memoized to prevent loops) ---
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
   const daysInMonth = getDaysInMonth(year, month);
   const monthName = currentDate.toLocaleString('default', { month: 'long' });
 
-  const daysArray = Array.from({ length: daysInMonth }, (_, i) => {
-    const d = new Date(year, month, i + 1);
-    return {
-      day: i + 1,
-      dateKey: formatDateKey(d),
-      weekday: d.toLocaleString('default', { weekday: 'narrow' }),
-      isWeekend: d.getDay() === 0 || d.getDay() === 6,
-      isToday: formatDateKey(d) === formatDateKey(new Date())
-    };
-  });
+  // FIX 1: Memoize daysArray so it doesn't trigger stats useMemo endlessly
+  const daysArray = useMemo(() => {
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      const d = new Date(year, month, i + 1);
+      return {
+        day: i + 1,
+        dateKey: formatDateKey(d),
+        weekday: d.toLocaleString('default', { weekday: 'narrow' }),
+        isWeekend: d.getDay() === 0 || d.getDay() === 6,
+        isToday: formatDateKey(d) === formatDateKey(new Date())
+      };
+    });
+  }, [year, month, daysInMonth]);
 
   // --- Analytics Calculations ---
   const stats = useMemo(() => {
@@ -239,33 +252,54 @@ export default function HabitTracker() {
   }, [habits, daysArray, daysInMonth]);
 
   // --- Login Screen ---
-  if (authLoading) return <div className="flex h-screen items-center justify-center">Loading...</div>;
+  if (authLoading) return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 text-slate-400">
+      <div className="flex flex-col items-center animate-pulse">
+        <Leaf className="w-8 h-8 mb-4 text-emerald-400" />
+        <span>Loading FocusLab...</span>
+      </div>
+    </div>
+  );
 
   if (!user) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
         <div className="bg-white w-full max-w-md p-8 rounded-2xl shadow-lg border border-gray-100 text-center">
-          <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+          <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-6 transform rotate-3">
             <Leaf className="w-8 h-8 text-emerald-600" />
           </div>
           <h1 className="text-2xl font-bold text-slate-900 mb-2">Welcome to FocusLab</h1>
           <p className="text-slate-500 mb-8">Track your habits and build a better version of yourself.</p>
           
-          <button 
-            onClick={handleGoogleLogin}
-            className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-bold hover:bg-slate-800 transition-all shadow-lg shadow-slate-200 flex items-center justify-center gap-3"
-          >
-             {/* Simple Google G icon */}
-            <div className="bg-white p-1 rounded-full">
-               <svg className="w-4 h-4" viewBox="0 0 24 24">
-                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                 <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                 <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.84z" fill="#FBBC05"/>
-                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-               </svg>
-            </div>
-            Sign in with Google
-          </button>
+          <div className="space-y-3">
+            <button 
+              onClick={handleGoogleLogin}
+              className="w-full bg-white text-slate-700 border border-gray-200 py-3.5 rounded-xl font-bold hover:bg-gray-50 transition-all flex items-center justify-center gap-3"
+            >
+               {/* Simple Google G icon */}
+              <div className="w-5 h-5">
+                 <svg viewBox="0 0 24 24">
+                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                   <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                   <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.84z" fill="#FBBC05"/>
+                   <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                 </svg>
+              </div>
+              Sign in with Google
+            </button>
+
+            <button 
+              onClick={handleGuestLogin}
+              className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-bold hover:bg-slate-800 transition-all shadow-lg shadow-slate-200 flex items-center justify-center gap-3"
+            >
+              <User className="w-5 h-5" />
+              Continue as Guest
+            </button>
+          </div>
+          
+          <p className="text-xs text-slate-400 mt-6">
+            Guest data is saved to this browser session.
+          </p>
         </div>
       </div>
     );
@@ -280,7 +314,7 @@ export default function HabitTracker() {
             {monthName} Tracker
           </h1>
           <p className="text-slate-500 text-sm mt-1 font-medium uppercase tracking-widest">
-            {user.email ? user.email.split('@')[0] : 'User'} • {year}
+            {user.isAnonymous ? 'Guest User' : (user.displayName || user.email?.split('@')[0] || 'User')} • {year}
           </p>
         </div>
 
@@ -312,16 +346,16 @@ export default function HabitTracker() {
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-8 items-start">
         
         {/* Left Sidebar / Controls */}
-        <div className="space-y-6 sticky top-8">
+        <div className="space-y-6 sticky top-8 z-20">
           {/* Quick Add Widget */}
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Habits</h3>
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">New Habit</h3>
             
             <form onSubmit={handleAddHabit} className="space-y-4">
               <div className="flex gap-2">
                 <input 
                   type="text" 
-                  placeholder="New..." 
+                  placeholder="e.g., Read 20 mins" 
                   value={newHabitTitle}
                   onChange={(e) => setNewHabitTitle(e.target.value)}
                   className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white transition-all"
@@ -440,7 +474,9 @@ export default function HabitTracker() {
                             key={d.day} 
                             className={`p-1 text-center border-r border-dashed border-gray-200 cursor-pointer select-none transition-colors
                               ${d.isWeekend ? 'bg-gray-50/30' : ''}
-                              ${isCompleted ? `${bgClass}/50` : 'hover:bg-gray-100'}
+                              ${isCompleted 
+                                ? `${bgClass}/50` 
+                                : 'hover:bg-gray-100'}
                             `}
                             onClick={() => toggleHabit(habit.id, d.dateKey)}
                           >
