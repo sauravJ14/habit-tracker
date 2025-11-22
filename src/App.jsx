@@ -29,11 +29,12 @@ import {
 
 const firebaseConfig = {
   apiKey: "AIzaSyANDPmkWdf0v3IjKH3ETGwj4WS9q8_0lRM",
-authDomain: "habit-tracker-88805.firebaseapp.com",
-projectId: "habit-tracker-88805",
-storageBucket: "habit-tracker-88805.firebasestorage.app",
-messagingSenderId: "1:846535830526:web:0e1d148744d58581bd2eaf",
-appId: "G-E7J2GH0FRT"
+  authDomain: "habit-tracker-88805.firebaseapp.com",
+  projectId: "habit-tracker-88805",
+  storageBucket: "habit-tracker-88805.firebasestorage.app",
+  messagingSenderId: "846535830526",
+  appId: "1:846535830526:web:0e1d148744d58581bd2eaf",
+  measurementId: "G-E7J2GH0FRT"
 };
 
 
