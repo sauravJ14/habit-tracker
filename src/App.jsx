@@ -26,16 +26,16 @@ import {
 // 1. GO TO YOUR FIREBASE CONSOLE -> PROJECT SETTINGS
 // 2. COPY YOUR CONFIG OBJECT AND PASTE IT BELOW
 // 3. UNCOMMENT THE BLOCK BELOW
-/*
+
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.firebasestorage.app",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyANDPmkWdf0v3IjKH3ETGwj4WS9q8_0lRM",
+authDomain: "habit-tracker-88805.firebaseapp.com",
+projectId: "habit-tracker-88805",
+storageBucket: "habit-tracker-88805.firebasestorage.app",
+messagingSenderId: "1:846535830526:web:0e1d148744d58581bd2eaf",
+appId: "G-E7J2GH0FRT"
 };
-*/
+
 
 // Initialize Firebase (Conditional check is for the chat preview only)
 const app = initializeApp(
