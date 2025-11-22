@@ -23,6 +23,17 @@ import {
   getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query 
 } from 'firebase/firestore';
 
+// --- Tailwind Configuration Override ---
+// This forces Tailwind to respect the 'dark' class specifically, 
+// bypassing the system default media query preference after loading.
+if (typeof window !== 'undefined') {
+  window.tailwind = window.tailwind || {};
+  window.tailwind.config = {
+    ...window.tailwind.config,
+    darkMode: 'class', 
+  };
+}
+
 // --- Firebase Setup ---
 const firebaseConfig = {
   apiKey: "AIzaSyANDPmkWdf0v3IjKH3ETGwj4WS9q8_0lRM",
@@ -163,7 +174,14 @@ export default function HabitTracker() {
   const [loading, setLoading] = useState(true);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [authLoading, setAuthLoading] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
+  
+  // Initialize dark mode based on system preference, then allow manual toggle
+  const [darkMode, setDarkMode] = useState(() => {
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    return false;
+  });
   
   // Quick Add Form State
   const [newHabitTitle, setNewHabitTitle] = useState('');
@@ -280,7 +298,6 @@ export default function HabitTracker() {
     // Lock Logic Check
     const todayKey = formatDateKey(new Date());
     if (dateKey < todayKey) {
-      // Silently return or alert if preferred. Visually it is locked.
       return;
     }
 
