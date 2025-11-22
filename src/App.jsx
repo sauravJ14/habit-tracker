@@ -7,7 +7,7 @@ import {
 import { 
   ChevronLeft, ChevronRight, Trash2, Check, X, Activity, 
   TrendingUp, ShieldAlert, Trophy, Calendar, Leaf, Skull, Plus, LogOut, User,
-  Moon, Sun, Lock, Smartphone, Target, Zap, CheckCircle
+  Moon, Sun, Lock, Smartphone, Target, Zap, CheckCircle, LayoutGrid, MoreHorizontal
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -30,7 +30,46 @@ if (typeof window !== 'undefined') {
   window.tailwind = window.tailwind || {};
   window.tailwind.config = {
     ...window.tailwind.config,
-    darkMode: 'class', 
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          border: "hsl(var(--border))",
+          input: "hsl(var(--input))",
+          ring: "hsl(var(--ring))",
+          background: "hsl(var(--background))",
+          foreground: "hsl(var(--foreground))",
+          primary: {
+            DEFAULT: "hsl(var(--primary))",
+            foreground: "hsl(var(--primary-foreground))",
+          },
+          secondary: {
+            DEFAULT: "hsl(var(--secondary))",
+            foreground: "hsl(var(--secondary-foreground))",
+          },
+          destructive: {
+            DEFAULT: "hsl(var(--destructive))",
+            foreground: "hsl(var(--destructive-foreground))",
+          },
+          muted: {
+            DEFAULT: "hsl(var(--muted))",
+            foreground: "hsl(var(--muted-foreground))",
+          },
+          accent: {
+            DEFAULT: "hsl(var(--accent))",
+            foreground: "hsl(var(--accent-foreground))",
+          },
+          popover: {
+            DEFAULT: "hsl(var(--popover))",
+            foreground: "hsl(var(--popover-foreground))",
+          },
+          card: {
+            DEFAULT: "hsl(var(--card))",
+            foreground: "hsl(var(--card-foreground))",
+          },
+        },
+      }
+    }
   };
 }
 
@@ -58,7 +97,6 @@ const appId = typeof __app_id !== 'undefined' ? __app_id : 'habit-tracker-v1';
 // --- Helper Functions ---
 const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
 
-// FIX: Use Local Time construction to prevent Timezone offsets shifting dates
 const formatDateKey = (date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -67,32 +105,16 @@ const formatDateKey = (date) => {
 };
 
 // --- COLOR PALETTES ---
-const POSITIVE_COLORS = [
-  '#10b981', // Emerald-500
-  '#06b6d4', // Cyan-500
-  '#3b82f6', // Blue-500
-  '#84cc16', // Lime-500
-  '#14b8a6', // Teal-500
-  '#6366f1', // Indigo-500
-];
+const POSITIVE_COLORS = ['#10b981', '#06b6d4', '#3b82f6', '#84cc16', '#14b8a6', '#6366f1'];
+const NEGATIVE_COLORS = ['#f43f5e', '#ef4444', '#f97316', '#d946ef', '#e11d48', '#db2777'];
 
-const NEGATIVE_COLORS = [
-  '#f43f5e', // Rose-500
-  '#ef4444', // Red-500
-  '#f97316', // Orange-500
-  '#d946ef', // Fuchsia-500
-  '#e11d48', // Rose-700
-  '#db2777', // Pink-600
-];
-
-// Daily Progress Colors
 const PROGRESS_COLORS = {
-  'Done': '#10b981', // Emerald
-  'Remaining': '#e2e8f0', // Slate-200 (Light mode default)
-  'RemainingDark': '#334155', // Slate-700 (Dark mode default)
+  'Done': '#18181b', // Zinc-900 for light mode
+  'DoneDark': '#f4f4f5', // Zinc-100 for dark mode
+  'Remaining': '#e4e4e7', // Zinc-200
+  'RemainingDark': '#27272a', // Zinc-800
 };
 
-// Helper to deterministically assign a color based on type and index
 const getHabitColor = (habit, allHabits) => {
   if (habit.type === 'build') {
     const buildHabits = allHabits.filter(h => h.type === 'build');
@@ -109,16 +131,16 @@ const getHabitColor = (habit, allHabits) => {
 const CustomAreaTooltip = ({ active, payload, label, darkMode }) => {
   if (active && payload && payload.length) {
     return (
-      <div className={`p-3 rounded-lg shadow-lg border text-xs ${darkMode ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-white border-gray-200 text-slate-700'}`}>
-        <p className="font-bold mb-2 border-b pb-1 border-dashed border-gray-500/30">Day {label}</p>
+      <div className={`px-3 py-2 rounded-md border text-xs shadow-md ${darkMode ? 'bg-zinc-950 border-zinc-800 text-zinc-50' : 'bg-white border-zinc-200 text-zinc-900'}`}>
+        <p className="font-semibold mb-2 pb-1 border-b border-zinc-200 dark:border-zinc-800">Day {label}</p>
         <ul className="space-y-1">
           {payload.map((entry, idx) => (
             <li key={idx} className="flex items-center justify-between gap-4">
-              <span className="flex items-center gap-1.5">
-                 <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }}></span>
-                 <span className="font-medium">{entry.name}</span>
+              <span className="flex items-center gap-2">
+                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: entry.color }}></span>
+                 <span className="text-muted-foreground">{entry.name}</span>
               </span>
-              <span className="font-mono font-bold">{entry.value}</span>
+              <span className="font-mono font-medium">{entry.value}</span>
             </li>
           ))}
         </ul>
@@ -137,11 +159,7 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
     const timer = setTimeout(() => {
       const todayElement = document.getElementById(`today-column-${type}`);
       if (todayElement) {
-        todayElement.scrollIntoView({ 
-          behavior: 'smooth', 
-          inline: 'center', 
-          block: 'nearest' 
-        });
+        todayElement.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
       }
     }, 500);
     return () => clearTimeout(timer);
@@ -154,38 +172,36 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
   });
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 overflow-hidden mb-8 transition-colors">
-      <div className={`p-4 border-b border-gray-200 dark:border-slate-700 flex items-center justify-between ${
-        type === 'build' ? 'bg-emerald-50/50 dark:bg-emerald-900/20' : 'bg-rose-50/50 dark:bg-rose-900/20'
-      }`}>
+    <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden mb-8">
+      <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-zinc-50/50 dark:bg-zinc-900/50">
         <div className="flex items-center gap-2">
-          {type === 'build' ? <Leaf className="w-5 h-5 text-emerald-600 dark:text-emerald-400" /> : <Skull className="w-5 h-5 text-rose-600 dark:text-rose-400" />}
-          <h3 className={`font-bold text-sm uppercase tracking-widest ${
-            type === 'build' ? 'text-emerald-800 dark:text-emerald-300' : 'text-rose-800 dark:text-rose-300'
-          }`}>
+          <div className={`w-1 h-4 rounded-full ${type === 'build' ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
+          <h3 className="font-semibold text-sm tracking-tight text-zinc-900 dark:text-zinc-100">
             {title}
           </h3>
         </div>
+        <span className="text-xs text-zinc-500 dark:text-zinc-400 font-medium px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800 rounded-full border border-zinc-200 dark:border-zinc-700">
+          {habits.length} habits
+        </span>
       </div>
       
-      {/* Scrollable Container */}
       <div className="overflow-x-auto pb-2 scrollbar-hide">
         <table className="w-full border-collapse min-w-[800px]">
           <thead>
-            <tr className="bg-gray-50 dark:bg-slate-900/50 border-b border-gray-200 dark:border-slate-700">
-              <th className="p-4 text-left font-semibold text-slate-700 dark:text-slate-300 min-w-[200px] sticky left-0 bg-gray-50 dark:bg-slate-900 z-20 border-r border-gray-200 dark:border-slate-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                Habit
+            <tr className="border-b border-zinc-200 dark:border-zinc-800">
+              <th className="p-4 text-left text-xs font-medium text-zinc-500 dark:text-zinc-400 min-w-[200px] sticky left-0 bg-white dark:bg-zinc-900 z-20 border-r border-zinc-200 dark:border-zinc-800 shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)]">
+                Habit Name
               </th>
               {daysArray.map((d) => (
                 <th 
                   key={d.day} 
                   id={d.isToday ? `today-column-${type}` : undefined}
-                  className={`p-1 text-center min-w-[36px] border-r border-dashed border-gray-200 dark:border-slate-700 last:border-none ${d.isWeekend ? 'bg-gray-50/50 dark:bg-slate-800/50' : ''}`}
+                  className={`p-1 text-center min-w-[40px] border-r border-dashed border-zinc-100 dark:border-zinc-800/50 last:border-none ${d.isWeekend ? 'bg-zinc-50/50 dark:bg-zinc-900/50' : ''} ${d.isToday ? 'bg-zinc-50 dark:bg-zinc-800/50' : ''}`}
                 >
-                  <div className={`text-[10px] mb-1 font-medium uppercase ${d.isToday ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-slate-500'}`}>
+                  <div className={`text-[10px] font-medium uppercase mb-1 ${d.isToday ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-400 dark:text-zinc-500'}`}>
                     {d.weekday[0]}
                   </div>
-                  <div className={`text-sm font-bold ${d.isToday ? 'bg-emerald-600 text-white w-6 h-6 flex items-center justify-center rounded-full mx-auto shadow-sm' : 'text-slate-700 dark:text-slate-300'}`}>
+                  <div className={`text-sm font-medium w-7 h-7 mx-auto flex items-center justify-center rounded-full ${d.isToday ? 'bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900' : 'text-zinc-700 dark:text-zinc-300'}`}>
                     {d.day}
                   </div>
                 </th>
@@ -199,41 +215,62 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
               const progressPercent = Math.min(100, Math.round((completedCount / habitGoal) * 100));
 
               return (
-                <tr key={habit.id} className="border-b border-gray-100 dark:border-slate-700/50 hover:bg-gray-50/50 dark:hover:bg-slate-700/30 transition-colors group">
-                  <td className="p-3 sticky left-0 bg-white dark:bg-slate-800 group-hover:bg-gray-50 dark:group-hover:bg-slate-700/30 transition-colors z-20 border-r border-gray-200 dark:border-slate-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] align-top">
+                <tr key={habit.id} className="border-b border-zinc-100 dark:border-zinc-800/50 group hover:bg-zinc-50/50 dark:hover:bg-zinc-900/50 transition-colors">
+                  {/* Sticky Row Header - Removed Icon, Clean Shadcn Look */}
+                  <td className="p-3 sticky left-0 bg-white dark:bg-zinc-900 group-hover:bg-zinc-50/50 dark:group-hover:bg-zinc-900/50 transition-colors z-20 border-r border-zinc-200 dark:border-zinc-800 shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)] align-top">
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3 overflow-hidden">
-                          <span className="text-lg flex-shrink-0">{habit.icon}</span>
-                          <div className="truncate max-w-[120px]">
-                            <div className="font-medium text-sm text-slate-800 dark:text-slate-200 truncate" title={habit.title}>{habit.title}</div>
-                          </div>
-                        </div>
-                        <button onClick={() => deleteHabit(habit.id)} className="text-gray-300 hover:text-rose-500 transition-all p-1"><Trash2 className="w-3.5 h-3.5" /></button>
+                        <span className="font-medium text-sm text-zinc-900 dark:text-zinc-100 truncate" title={habit.title}>
+                          {habit.title}
+                        </span>
+                        <button 
+                          onClick={() => deleteHabit(habit.id)}
+                          className="text-zinc-300 hover:text-rose-500 dark:text-zinc-600 dark:hover:text-rose-400 transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
+                      
+                      {/* Shadcn-style Progress Bar */}
                       <div className="mt-1">
-                         <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-500 font-medium mb-1">
+                         <div className="flex justify-between text-[10px] text-zinc-500 dark:text-zinc-400 font-medium mb-1.5">
                             <span>{completedCount} / {habitGoal}</span>
                             <span>{progressPercent}%</span>
                          </div>
-                         <div className="h-1.5 w-full bg-gray-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                           <div className={`h-full rounded-full transition-all duration-500 ${habit.type === 'build' ? 'bg-emerald-500' : 'bg-rose-500'}`} style={{ width: `${progressPercent}%` }} />
+                         <div className="h-1.5 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                           <div 
+                             className={`h-full rounded-full transition-all duration-500 ${habit.type === 'build' ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                             style={{ width: `${progressPercent}%` }}
+                           />
                          </div>
                       </div>
                     </div>
                   </td>
                   {daysArray.map((d) => {
                     const isCompleted = habit.completedDates?.[d.dateKey];
-                    const colorClass = habit.type === 'build' ? 'bg-emerald-500' : 'bg-rose-500';
-                    const bgClass = habit.type === 'build' ? 'bg-emerald-50 dark:bg-emerald-900/30' : 'bg-rose-50 dark:bg-rose-900/30';
+                    const colorClass = habit.type === 'build' ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-rose-500 border-rose-500 text-white';
                     const todayKey = formatDateKey(new Date());
                     const isPast = d.dateKey < todayKey;
+                    const isFuture = d.dateKey > todayKey;
+                    
                     return (
-                      <td key={d.day} className={`p-1 text-center border-r border-dashed border-gray-200 dark:border-slate-700 select-none transition-colors relative align-middle ${d.isWeekend ? 'bg-gray-50/30 dark:bg-slate-800/30' : ''} ${isCompleted ? `${bgClass}/50` : (isPast ? 'cursor-not-allowed opacity-60' : 'hover:bg-gray-100 dark:hover:bg-slate-700 cursor-pointer')}`} onClick={() => !isPast && toggleHabit(habit.id, d.dateKey)}>
-                        <div className={`w-6 h-6 mx-auto rounded flex items-center justify-center transition-all duration-200 ${isCompleted ? `${colorClass} text-white shadow-sm scale-100` : 'bg-gray-100 dark:bg-slate-700 text-transparent scale-75 hover:scale-90'}`}>
-                          <Check className="w-3.5 h-3.5" strokeWidth={4} />
+                      <td 
+                        key={d.day} 
+                        className={`p-1 text-center border-r border-dashed border-zinc-100 dark:border-zinc-800/50 relative align-middle 
+                          ${d.isWeekend ? 'bg-zinc-50/30 dark:bg-zinc-900/30' : ''} 
+                          ${isFuture ? 'opacity-30 pointer-events-none' : ''}
+                        `}
+                        onClick={() => !isFuture && toggleHabit(habit.id, d.dateKey)}
+                      >
+                        <div className={`
+                          w-8 h-8 mx-auto rounded-md border flex items-center justify-center transition-all duration-200 cursor-pointer
+                          ${isCompleted 
+                            ? `${colorClass} shadow-sm` 
+                            : `bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-transparent hover:border-zinc-300 dark:hover:border-zinc-700 ${isPast ? 'hover:bg-zinc-50 dark:hover:bg-zinc-800' : ''}`
+                          }
+                        `}>
+                          <Check className="w-4 h-4" strokeWidth={3} />
                         </div>
-                        {isPast && !isCompleted && (<div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 group-hover:opacity-20"><Lock className="w-3 h-3 text-slate-400" /></div>)}
                       </td>
                     );
                   })}
@@ -242,9 +279,17 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
             })}
           </tbody>
           <tfoot>
-             <tr className="bg-slate-50 dark:bg-slate-900/80 font-bold text-xs text-slate-500 dark:text-slate-400 border-t-2 border-gray-200 dark:border-slate-700">
-                <td className="p-3 sticky left-0 bg-slate-50 dark:bg-slate-900/80 z-20 border-r border-gray-200 dark:border-slate-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] uppercase tracking-wider">Daily Progress</td>
-                {dailyTotals.map((total, idx) => (<td key={idx} className="p-1 text-center border-r border-dashed border-gray-200 dark:border-slate-700"><span className={`${total === 100 ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>{total}%</span></td>))}
+             <tr className="bg-zinc-50/50 dark:bg-zinc-900/50 border-t border-zinc-200 dark:border-zinc-800 font-medium text-[10px] text-zinc-500 dark:text-zinc-400">
+                <td className="p-3 sticky left-0 bg-zinc-50 dark:bg-zinc-900 z-20 border-r border-zinc-200 dark:border-zinc-800 shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)] uppercase tracking-wider">
+                   Daily Total
+                </td>
+                {dailyTotals.map((total, idx) => (
+                   <td key={idx} className="p-1 text-center border-r border-dashed border-zinc-200 dark:border-zinc-800/50">
+                      <span className={`${total === 100 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : ''}`}>
+                        {total}%
+                      </span>
+                   </td>
+                ))}
              </tr>
           </tfoot>
         </table>
@@ -313,12 +358,10 @@ export default function HabitTracker() {
   const handleAddHabit = async (e) => {
     e.preventDefault();
     if (!newHabitTitle.trim() || !user) return;
-    const icon = newHabitType === 'build' ? '🌱' : '💀';
     try {
       await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'habits'), {
         title: newHabitTitle, 
         type: newHabitType, 
-        icon: icon, 
         goal: parseInt(newHabitGoal) || 20,
         createdAt: Date.now(), 
         completedDates: {} 
@@ -388,7 +431,7 @@ export default function HabitTracker() {
       return dataPoint;
     });
 
-    // 3. Weekday Consistency (Radar Chart Data) - FIXED LOGIC
+    // 3. Weekday Consistency
     const weekdayCounts = { 'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0 };
     const weekdayOpportunities = { 'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0 };
     const todayKey = formatDateKey(new Date());
@@ -416,7 +459,7 @@ export default function HabitTracker() {
        return { subject: day, A: percent, fullMark: 100 };
     });
 
-    // 4. Daily Progress (Pie Chart) - REPLACES HABIT HEALTH
+    // 4. Daily Progress
     const todayDateKey = formatDateKey(new Date());
     const totalHabits = habits.length;
     const completedToday = habits.filter(h => h.completedDates?.[todayDateKey]).length;
@@ -433,20 +476,20 @@ export default function HabitTracker() {
   const buildHabits = habits.filter(h => h.type === 'build');
   const breakHabits = habits.filter(h => h.type === 'break');
 
-  if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-900 text-slate-400 animate-pulse">Loading...</div>;
+  if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950 text-zinc-400 animate-pulse">Loading...</div>;
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 font-sans">
-        <div className="bg-white w-full max-w-md p-8 rounded-2xl shadow-lg text-center">
-          <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-6 rotate-3">
-            <Leaf className="w-8 h-8 text-emerald-600" />
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-4 font-sans">
+        <div className="bg-white w-full max-w-md p-8 rounded-xl shadow-sm border border-zinc-200 text-center">
+          <div className="w-12 h-12 bg-zinc-100 rounded-xl flex items-center justify-center mx-auto mb-6">
+            <Leaf className="w-6 h-6 text-zinc-900" />
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 mb-2">FocusLab</h1>
-          <p className="text-slate-500 mb-8">Build better habits.</p>
+          <h1 className="text-2xl font-bold text-zinc-900 mb-2 tracking-tight">FocusLab</h1>
+          <p className="text-zinc-500 mb-8 text-sm">Master your routine, one day at a time.</p>
           <div className="space-y-3">
-            <button onClick={handleGoogleLogin} className="w-full bg-white text-slate-700 border py-3.5 rounded-xl font-bold hover:bg-gray-50 flex items-center justify-center gap-3">Sign in with Google</button>
-            <button onClick={handleGuestLogin} className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-bold hover:bg-slate-800 flex items-center justify-center gap-3">Guest Mode</button>
+            <button onClick={handleGoogleLogin} className="w-full bg-white text-zinc-900 border border-zinc-200 py-2.5 rounded-md font-medium hover:bg-zinc-50 transition-colors flex items-center justify-center gap-2 text-sm">Sign in with Google</button>
+            <button onClick={handleGuestLogin} className="w-full bg-zinc-900 text-white py-2.5 rounded-md font-medium hover:bg-zinc-900/90 transition-colors flex items-center justify-center gap-2 text-sm">Continue as Guest</button>
           </div>
         </div>
       </div>
@@ -455,75 +498,119 @@ export default function HabitTracker() {
 
   return (
     <div className={`${darkMode ? 'dark' : ''}`}>
-      <div className="min-h-screen bg-gray-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans p-3 md:p-8 overflow-x-hidden transition-colors duration-300">
+      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans p-4 md:p-8 overflow-x-hidden transition-colors duration-300">
         
         {/* Header */}
-        <div className="max-w-7xl mx-auto mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div className="flex items-center gap-3">
-             <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-white dark:bg-slate-800 border-2 border-emerald-500 p-0.5 shadow-sm overflow-hidden shrink-0">
-                {user.photoURL ? <img src={user.photoURL} alt="Profile" className="w-full h-full rounded-full object-cover" /> : <div className="w-full h-full rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-400"><User className="w-6 h-6" /></div>}
+        <div className="max-w-7xl mx-auto mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
+             {/* LOGO */}
+             <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-zinc-900 dark:bg-zinc-50 rounded-md flex items-center justify-center">
+                  <Leaf className="w-4 h-4 text-zinc-50 dark:text-zinc-900" />
+                </div>
+                <span className="font-bold text-lg tracking-tight text-zinc-900 dark:text-white hidden md:block">FocusLab</span>
              </div>
+
+             <div className="h-6 w-px bg-zinc-200 dark:bg-zinc-800 mx-2 hidden md:block"></div>
+
+             {/* Date Display */}
              <div>
-               <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{monthName}</h1>
-               <p className="text-slate-500 dark:text-slate-400 text-xs uppercase tracking-widest">{year}</p>
+               <h1 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight leading-none">{monthName}</h1>
+               <p className="text-zinc-500 dark:text-zinc-400 text-[10px] uppercase tracking-widest font-medium mt-0.5">{year}</p>
              </div>
           </div>
-          <div className="flex items-center gap-2 md:gap-4 self-end md:self-auto">
-            <button onClick={() => setDarkMode(!darkMode)} className="bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 p-2.5 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">{darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}</button>
-            <div className="flex items-center gap-1 bg-white dark:bg-slate-800 p-1.5 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
-              <button onClick={() => setCurrentDate(new Date(year, month - 1, 1))} className="p-1.5 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg"><ChevronLeft className="w-4 h-4" /></button>
-              <span className="text-xs font-bold min-w-[80px] text-center uppercase">{monthName.substring(0,3)}</span>
-              <button onClick={() => setCurrentDate(new Date(year, month + 1, 1))} className="p-1.5 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg"><ChevronRight className="w-4 h-4" /></button>
-            </div>
-            <button onClick={handleLogout} className="bg-white dark:bg-slate-800 text-rose-500 p-2.5 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700"><LogOut className="w-5 h-5" /></button>
+
+          <div className="flex items-center gap-2 md:gap-3 self-end md:self-auto w-full md:w-auto justify-end">
+             <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 p-1 rounded-md border border-zinc-200 dark:border-zinc-800">
+                <button onClick={() => setCurrentDate(new Date(year, month - 1, 1))} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-500 dark:text-zinc-400"><ChevronLeft className="w-4 h-4" /></button>
+                <span className="text-xs font-bold min-w-[60px] text-center uppercase text-zinc-700 dark:text-zinc-300">{monthName.substring(0,3)}</span>
+                <button onClick={() => setCurrentDate(new Date(year, month + 1, 1))} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-500 dark:text-zinc-400"><ChevronRight className="w-4 h-4" /></button>
+             </div>
+
+             <div className="h-8 w-px bg-zinc-200 dark:bg-zinc-800 mx-1 hidden md:block"></div>
+
+             <button onClick={() => setDarkMode(!darkMode)} className="bg-white dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 p-2 rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors">{darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}</button>
+             
+             <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden border border-zinc-200 dark:border-zinc-700">
+                {user.photoURL ? <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-zinc-400"><User className="w-4 h-4" /></div>}
+             </div>
+             
+             <button onClick={handleLogout} className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 p-2"><LogOut className="w-4 h-4" /></button>
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 items-start">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-8 items-start">
           
           {/* Sidebar */}
           <div className="space-y-4 sticky top-4 z-30">
-            <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">New Habit</h3>
+            <div className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
+              <h3 className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-4">Create Habit</h3>
               <form onSubmit={handleAddHabit} className="space-y-3">
                 <div className="space-y-2">
-                  <input type="text" placeholder="Habit Name..." value={newHabitTitle} onChange={(e) => setNewHabitTitle(e.target.value)} className="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-slate-500" />
-                  <div className="flex gap-2">
-                    <div className="relative w-20 shrink-0">
-                        <input type="number" min="1" max="31" value={newHabitGoal} onChange={(e) => setNewHabitGoal(e.target.value)} className="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg pl-2 pr-1 py-2 text-sm dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-slate-500" />
-                        <span className="absolute right-2 top-2.5 text-[10px] text-gray-400 pointer-events-none">/mo</span>
-                    </div>
-                    <div className="flex-1 flex gap-1">
-                       <button type="button" onClick={() => setNewHabitType('build')} className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-[10px] font-bold uppercase border transition-all ${newHabitType === 'build' ? 'bg-emerald-100 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300' : 'bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-700 dark:text-slate-400'}`}><Leaf className="w-3 h-3" /></button>
-                       <button type="button" onClick={() => setNewHabitType('break')} className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-[10px] font-bold uppercase border transition-all ${newHabitType === 'break' ? 'bg-rose-100 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300' : 'bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-700 dark:text-slate-400'}`}><Skull className="w-3 h-3" /></button>
+                  <div>
+                    <label className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">Name</label>
+                    <input type="text" placeholder="e.g. Read 30 mins" value={newHabitTitle} onChange={(e) => setNewHabitTitle(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-zinc-100 transition-all" />
+                  </div>
+                  
+                  <div>
+                    <label className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">Goal (Days/Mo)</label>
+                    <div className="flex gap-2">
+                      <div className="relative w-20 shrink-0">
+                          <input type="number" min="1" max="31" value={newHabitGoal} onChange={(e) => setNewHabitGoal(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-md pl-3 pr-1 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-zinc-100 transition-all" />
+                      </div>
+                      <div className="flex-1 flex gap-1 bg-zinc-100 dark:bg-zinc-950 p-1 rounded-md border border-zinc-200 dark:border-zinc-800">
+                         <button type="button" onClick={() => setNewHabitType('build')} className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded text-[10px] font-bold uppercase transition-all ${newHabitType === 'build' ? 'bg-white dark:bg-zinc-800 text-emerald-600 shadow-sm' : 'text-zinc-400 hover:text-zinc-600'}`}>Build</button>
+                         <button type="button" onClick={() => setNewHabitType('break')} className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded text-[10px] font-bold uppercase transition-all ${newHabitType === 'break' ? 'bg-white dark:bg-zinc-800 text-rose-600 shadow-sm' : 'text-zinc-400 hover:text-zinc-600'}`}>Break</button>
+                      </div>
                     </div>
                   </div>
-                  <button type="submit" disabled={!newHabitTitle.trim()} className="w-full bg-slate-900 dark:bg-slate-700 text-white py-2.5 rounded-lg flex items-center justify-center hover:bg-slate-800 disabled:opacity-50 text-sm font-bold gap-2"><Plus className="w-4 h-4" /> Add Habit</button>
+                  
+                  <button type="submit" disabled={!newHabitTitle.trim()} className="w-full bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 py-2.5 rounded-md flex items-center justify-center hover:bg-zinc-900/90 dark:hover:bg-zinc-100/90 disabled:opacity-50 text-sm font-medium transition-colors mt-2">Create Habit</button>
                 </div>
               </form>
             </div>
-            <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 flex justify-between items-center">
-               <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400"><Activity className="w-4 h-4 text-emerald-500" /> Active</div>
-               <span className="font-bold text-slate-900 dark:text-slate-200">{habits.length}</span>
+            
+            <div className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex justify-between items-center">
+               <div className="flex items-center gap-2.5">
+                 <div className="p-1.5 rounded-md bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600">
+                   <Activity className="w-4 h-4" />
+                 </div>
+                 <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Active Habits</span>
+               </div>
+               <span className="text-lg font-bold text-zinc-900 dark:text-zinc-100 font-mono">{habits.length}</span>
             </div>
           </div>
 
           {/* Content */}
-          <div className="space-y-6 min-w-0">
-            <HabitSection title="Build Habits" type="build" habits={buildHabits} daysArray={daysArray} toggleHabit={toggleHabit} deleteHabit={deleteHabit} daysInMonth={daysInMonth} isDarkMode={darkMode} />
-            <HabitSection title="Break Habits" type="break" habits={breakHabits} daysArray={daysArray} toggleHabit={toggleHabit} deleteHabit={deleteHabit} daysInMonth={daysInMonth} isDarkMode={darkMode} />
+          <div className="space-y-8 min-w-0">
+            
+            {/* Tables */}
+            <div className="space-y-6">
+              <HabitSection title="Build Habits" type="build" habits={buildHabits} daysArray={daysArray} toggleHabit={toggleHabit} deleteHabit={deleteHabit} daysInMonth={daysInMonth} isDarkMode={darkMode} />
+              <HabitSection title="Break Habits" type="break" habits={breakHabits} daysArray={daysArray} toggleHabit={toggleHabit} deleteHabit={deleteHabit} daysInMonth={daysInMonth} isDarkMode={darkMode} />
+            </div>
             
             {habits.length === 0 && (
-              <div className="bg-white dark:bg-slate-800 rounded-2xl p-8 text-center text-gray-400 dark:text-slate-500 border border-gray-200 dark:border-slate-700">
-                <div className="flex flex-col items-center gap-2"><Smartphone className="w-10 h-10 opacity-20" /><p className="text-sm">Add a habit to start tracking.</p></div>
+              <div className="bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 p-12 text-center">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-full text-zinc-400">
+                    <LayoutGrid className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-zinc-900 dark:text-zinc-100 font-medium">No habits yet</h3>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400 max-w-xs mx-auto">Create your first habit using the form on the left to start tracking your progress.</p>
+                </div>
               </div>
             )}
 
-            {/* ROW 1: Trends & Goals */}
+            {/* Analytics Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Habit Trends Chart (Cumulative Area) */}
-              <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4" /> Habit Trends (Cumulative)</h3>
+              
+              {/* CHART 1: Trends */}
+              <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-zinc-500" /> Trends</h3>
+                  <span className="text-[10px] font-medium px-2 py-1 bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-500">Cumulative</span>
+                </div>
                 <div className="h-64 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={stats?.cumulativeData || []}>
@@ -532,17 +619,17 @@ export default function HabitTracker() {
                           const color = getHabitColor(habit, habits);
                           return (
                             <linearGradient key={habit.id} id={`gradient-${habit.id}`} x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor={color} stopOpacity={0.4}/>
+                              <stop offset="5%" stopColor={color} stopOpacity={0.3}/>
                               <stop offset="95%" stopColor={color} stopOpacity={0}/>
                             </linearGradient>
                           );
                         })}
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? '#334155' : '#f1f5f9'} />
-                      <XAxis dataKey="day" tickLine={false} axisLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} interval={4} />
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? '#27272a' : '#f4f4f5'} />
+                      <XAxis dataKey="day" tickLine={false} axisLine={false} tick={{fontSize: 10, fill: '#a1a1aa'}} interval={4} />
                       <YAxis hide domain={[0, 'auto']} />
-                      <Tooltip content={<CustomAreaTooltip darkMode={darkMode} />} cursor={{stroke: '#cbd5e1', strokeWidth: 2}} />
-                      <Legend iconType="circle" wrapperStyle={{fontSize: '10px', paddingTop: '10px'}} />
+                      <Tooltip content={<CustomAreaTooltip darkMode={darkMode} />} cursor={{stroke: '#a1a1aa', strokeWidth: 1, strokeDasharray: '4 4'}} />
+                      <Legend iconType="circle" wrapperStyle={{fontSize: '11px', paddingTop: '16px', color: '#71717a'}} />
                       {habits.map((habit, index) => (
                         <Area 
                           key={habit.id}
@@ -560,17 +647,20 @@ export default function HabitTracker() {
                 </div>
               </div>
 
-              {/* Goal Analysis Table */}
-              <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 flex flex-col">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Target className="w-4 h-4" /> Goal Analysis</h3>
+              {/* CHART 2: Goal Table */}
+              <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex flex-col">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><Target className="w-4 h-4 text-zinc-500" /> Goals</h3>
+                  <span className="text-[10px] font-medium px-2 py-1 bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-500">Monthly</span>
+                </div>
                 <div className="flex-1 overflow-auto scrollbar-hide">
                   <table className="w-full text-left border-collapse">
                      <thead>
-                        <tr className="text-[10px] uppercase text-slate-400 dark:text-slate-500 font-bold border-b border-gray-100 dark:border-slate-700">
-                           <th className="pb-2 pl-1 font-bold tracking-wider">Habit</th>
-                           <th className="pb-2 text-center w-12 tracking-wider">Goal</th>
-                           <th className="pb-2 text-center w-12 tracking-wider">Actual</th>
-                           <th className="pb-2 pl-4 tracking-wider">Progress</th>
+                        <tr className="text-[10px] uppercase text-zinc-400 dark:text-zinc-500 font-semibold border-b border-zinc-100 dark:border-zinc-800">
+                           <th className="pb-3 pl-1 font-semibold tracking-wider">Habit</th>
+                           <th className="pb-3 text-center w-12 tracking-wider">Goal</th>
+                           <th className="pb-3 text-center w-12 tracking-wider">Actual</th>
+                           <th className="pb-3 pl-4 tracking-wider">Progress</th>
                         </tr>
                      </thead>
                      <tbody className="text-sm">
@@ -580,12 +670,12 @@ export default function HabitTracker() {
                             const percent = Math.min(100, Math.round((entry.actual / entry.goal) * 100));
                             
                             return (
-                              <tr key={entry.id} className="border-b border-gray-50 dark:border-slate-700/50 last:border-none hover:bg-gray-50 dark:hover:bg-slate-700/30 transition-colors">
-                                 <td className="py-3 pl-1 font-medium text-slate-700 dark:text-slate-200 truncate max-w-[100px]">{entry.name}</td>
-                                 <td className="py-3 text-center text-slate-500 dark:text-slate-400 font-mono text-xs">{entry.goal}</td>
-                                 <td className="py-3 text-center font-bold text-slate-800 dark:text-slate-100 font-mono text-xs">{entry.actual}</td>
+                              <tr key={entry.id} className="border-b border-zinc-50 dark:border-zinc-800/50 last:border-none hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors group">
+                                 <td className="py-3 pl-1 font-medium text-zinc-700 dark:text-zinc-200 truncate max-w-[100px]">{entry.name}</td>
+                                 <td className="py-3 text-center text-zinc-500 dark:text-zinc-400 font-mono text-xs">{entry.goal}</td>
+                                 <td className="py-3 text-center font-semibold text-zinc-900 dark:text-zinc-100 font-mono text-xs">{entry.actual}</td>
                                  <td className="py-3 pl-4 align-middle">
-                                    <div className="h-2.5 w-full bg-gray-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                                    <div className="h-2 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                                        <div 
                                           className="h-full rounded-full transition-all duration-700 ease-out"
                                           style={{ width: `${percent}%`, backgroundColor: color }}
@@ -599,18 +689,18 @@ export default function HabitTracker() {
                   </table>
                 </div>
               </div>
-            </div>
 
-            {/* ROW 2: Weekday Consistency & Daily Progress */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Weekday Consistency Radar (FIXED) */}
-              <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700">
-                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Zap className="w-4 h-4" /> Weekday Consistency</h3>
+              {/* CHART 3: Radar */}
+              <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
+                 <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><Zap className="w-4 h-4 text-zinc-500" /> Consistency</h3>
+                    <span className="text-[10px] font-medium px-2 py-1 bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-500">By Weekday</span>
+                 </div>
                  <div className="h-64 w-full flex items-center justify-center">
                     <ResponsiveContainer width="100%" height="100%">
                        <RadarChart cx="50%" cy="50%" outerRadius="70%" data={stats?.radarData || []}>
-                          <PolarGrid stroke={darkMode ? '#334155' : '#e2e8f0'} />
-                          <PolarAngleAxis dataKey="subject" tick={{ fill: darkMode ? '#94a3b8' : '#64748b', fontSize: 12 }} />
+                          <PolarGrid stroke={darkMode ? '#27272a' : '#e4e4e7'} />
+                          <PolarAngleAxis dataKey="subject" tick={{ fill: darkMode ? '#71717a' : '#a1a1aa', fontSize: 11, fontWeight: 500 }} />
                           <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
                           <Radar
                             name="Consistency"
@@ -618,10 +708,10 @@ export default function HabitTracker() {
                             stroke="#10b981"
                             strokeWidth={2}
                             fill="#10b981"
-                            fillOpacity={0.3}
+                            fillOpacity={0.2}
                           />
                           <Tooltip 
-                            contentStyle={{borderRadius: '8px', border: 'none', backgroundColor: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#fff' : '#000', fontSize: '12px'}}
+                            contentStyle={{borderRadius: '6px', border: 'none', backgroundColor: darkMode ? '#09090b' : '#fff', color: darkMode ? '#fff' : '#000', fontSize: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
                             formatter={(value) => [`${value}%`, 'Consistency']}
                           />
                        </RadarChart>
@@ -629,9 +719,12 @@ export default function HabitTracker() {
                  </div>
               </div>
 
-              {/* Daily Progress Pie Chart (NEW) */}
-              <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700">
-                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Today's Focus</h3>
+              {/* CHART 4: Daily Pie */}
+              <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
+                 <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><CheckCircle className="w-4 h-4 text-zinc-500" /> Daily Focus</h3>
+                    <span className="text-[10px] font-medium px-2 py-1 bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-500">Today</span>
+                 </div>
                  <div className="h-64 w-full flex items-center justify-center relative">
                    {stats?.totalHabits > 0 ? (
                     <>
@@ -643,34 +736,35 @@ export default function HabitTracker() {
                               cy="50%"
                               innerRadius={60}
                               outerRadius={80}
-                              paddingAngle={5}
+                              paddingAngle={4}
                               dataKey="value"
                               startAngle={90}
                               endAngle={-270}
+                              cornerRadius={4}
                             >
                               {stats.dailyProgressData.map((entry, index) => (
                                 <Cell 
                                   key={`cell-${index}`} 
-                                  fill={entry.name === 'Done' ? PROGRESS_COLORS.Done : (darkMode ? PROGRESS_COLORS.RemainingDark : PROGRESS_COLORS.Remaining)} 
+                                  fill={entry.name === 'Done' ? PROGRESS_COLORS[darkMode ? 'DoneDark' : 'Done'] : (darkMode ? PROGRESS_COLORS.RemainingDark : PROGRESS_COLORS.Remaining)} 
                                   strokeWidth={0} 
                                 />
                               ))}
                             </Pie>
                             <Tooltip 
-                              contentStyle={{borderRadius: '8px', border: 'none', backgroundColor: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#fff' : '#000', fontSize: '12px'}}
+                              contentStyle={{borderRadius: '6px', border: 'none', backgroundColor: darkMode ? '#09090b' : '#fff', color: darkMode ? '#fff' : '#000', fontSize: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
                             />
                          </PieChart>
                       </ResponsiveContainer>
                       {/* Center Label */}
                       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                         <span className="text-3xl font-bold text-slate-900 dark:text-white">
+                         <span className="text-4xl font-bold text-zinc-900 dark:text-white tracking-tighter">
                            {Math.round((stats.completedToday / stats.totalHabits) * 100)}%
                          </span>
-                         <span className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider mt-1">Done</span>
+                         <span className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mt-1 font-medium">Complete</span>
                       </div>
                     </>
                    ) : (
-                     <div className="text-slate-400 text-sm">No habits to track today</div>
+                     <div className="text-zinc-400 text-sm">No habits to track today</div>
                    )}
                  </div>
               </div>
