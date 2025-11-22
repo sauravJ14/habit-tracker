@@ -166,9 +166,18 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
   }, [daysArray, type]); 
 
   const dailyTotals = daysArray.map(d => {
-    const completedCount = habits.filter(h => h.completedDates?.[d.dateKey]).length;
+    let successCount = 0;
+    habits.forEach(h => {
+      const isChecked = h.completedDates?.[d.dateKey];
+      if (h.type === 'build') {
+        if (isChecked) successCount++;
+      } else {
+        // Inverse Logic: Unchecked = Success (Clean day)
+        if (!isChecked) successCount++;
+      }
+    });
     const totalActive = habits.length;
-    return totalActive > 0 ? Math.round((completedCount / totalActive) * 100) : 0;
+    return totalActive > 0 ? Math.round((successCount / totalActive) * 100) : 0;
   });
 
   return (
@@ -210,13 +219,22 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
           </thead>
           <tbody>
             {habits.map((habit) => {
-              const completedCount = Object.keys(habit.completedDates || {}).length;
+              const checkedCount = Object.keys(habit.completedDates || {}).length;
               const habitGoal = habit.goal || daysInMonth;
-              const progressPercent = Math.min(100, Math.round((completedCount / habitGoal) * 100));
+              
+              // Inverse Logic for Progress Bar
+              let actualScore = 0;
+              if (habit.type === 'build') {
+                actualScore = checkedCount;
+              } else {
+                // Break: Start with full score (Goal), subtract checks. Clamp at 0.
+                actualScore = Math.max(0, habitGoal - checkedCount);
+              }
+              
+              const progressPercent = Math.min(100, Math.round((actualScore / habitGoal) * 100));
 
               return (
                 <tr key={habit.id} className="border-b border-zinc-100 dark:border-zinc-800/50 group hover:bg-zinc-50/50 dark:hover:bg-zinc-900/50 transition-colors">
-                  {/* Sticky Row Header - Removed Icon, Clean Shadcn Look */}
                   <td className="p-3 sticky left-0 bg-white dark:bg-zinc-900 group-hover:bg-zinc-50/50 dark:group-hover:bg-zinc-900/50 transition-colors z-20 border-r border-zinc-200 dark:border-zinc-800 shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)] align-top">
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center justify-between">
@@ -231,10 +249,10 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
                         </button>
                       </div>
                       
-                      {/* Shadcn-style Progress Bar */}
                       <div className="mt-1">
                          <div className="flex justify-between text-[10px] text-zinc-500 dark:text-zinc-400 font-medium mb-1.5">
-                            <span>{completedCount} / {habitGoal}</span>
+                            {/* Inverse display: Clean Days / Goal */}
+                            <span>{actualScore} / {habitGoal}</span>
                             <span>{progressPercent}%</span>
                          </div>
                          <div className="h-1.5 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
@@ -248,11 +266,35 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
                   </td>
                   {daysArray.map((d) => {
                     const isCompleted = habit.completedDates?.[d.dateKey];
-                    const colorClass = habit.type === 'build' ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-rose-500 border-rose-500 text-white';
                     const todayKey = formatDateKey(new Date());
                     const isPast = d.dateKey < todayKey;
                     const isFuture = d.dateKey > todayKey;
                     
+                    let cellContent = null;
+                    let cellClass = "";
+                    
+                    if (habit.type === 'build') {
+                       if (isCompleted) {
+                         cellClass = "bg-emerald-500 border-emerald-500 text-white shadow-sm";
+                         cellContent = <Check className="w-4 h-4" strokeWidth={3} />;
+                       } else {
+                         cellClass = "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-transparent hover:border-zinc-300 dark:hover:border-zinc-700";
+                         cellContent = <Check className="w-4 h-4" strokeWidth={3} />;
+                       }
+                    } else {
+                       // Break Habit Inverse Visuals
+                       if (isCompleted) {
+                         // Checked = Failed (Red X)
+                         cellClass = "bg-rose-500 border-rose-500 text-white shadow-sm";
+                         cellContent = <X className="w-4 h-4" strokeWidth={3} />;
+                       } else {
+                         // Empty = Success (Clean)
+                         cellClass = "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-transparent hover:border-zinc-300 dark:hover:border-zinc-700";
+                         // We show nothing in empty cell for break habits (clean look), or maybe a faint dot?
+                         // Let's keep it empty but implied good.
+                       }
+                    }
+
                     return (
                       <td 
                         key={d.day} 
@@ -264,12 +306,9 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
                       >
                         <div className={`
                           w-8 h-8 mx-auto rounded-md border flex items-center justify-center transition-all duration-200 cursor-pointer
-                          ${isCompleted 
-                            ? `${colorClass} shadow-sm` 
-                            : `bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-transparent hover:border-zinc-300 dark:hover:border-zinc-700 ${isPast ? 'hover:bg-zinc-50 dark:hover:bg-zinc-800' : ''}`
-                          }
+                          ${cellClass}
                         `}>
-                          <Check className="w-4 h-4" strokeWidth={3} />
+                          {cellContent}
                         </div>
                       </td>
                     );
@@ -281,11 +320,11 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
           <tfoot>
              <tr className="bg-zinc-50/50 dark:bg-zinc-900/50 border-t border-zinc-200 dark:border-zinc-800 font-medium text-[10px] text-zinc-500 dark:text-zinc-400">
                 <td className="p-3 sticky left-0 bg-zinc-50 dark:bg-zinc-900 z-20 border-r border-zinc-200 dark:border-zinc-800 shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)] uppercase tracking-wider">
-                   Daily Total
+                   Daily Success
                 </td>
                 {dailyTotals.map((total, idx) => (
                    <td key={idx} className="p-1 text-center border-r border-dashed border-zinc-200 dark:border-zinc-800/50">
-                      <span className={`${total === 100 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : ''}`}>
+                      <span className={`${total >= 80 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : ''}`}>
                         {total}%
                       </span>
                    </td>
@@ -402,75 +441,150 @@ export default function HabitTracker() {
     });
   }, [year, month, daysInMonth]);
 
-  // --- Statistics Calculations ---
+  // --- Statistics Calculations (UPDATED FOR INVERSE LOGIC) ---
   const stats = useMemo(() => {
     if (habits.length === 0) return null;
 
     // 1. Goal Analysis Data
-    const goalData = habits.map((h) => ({
-      name: h.title,
-      actual: Object.keys(h.completedDates || {}).length,
-      goal: h.goal || daysInMonth,
-      type: h.type,
-      id: h.id 
-    }));
+    const goalData = habits.map((h) => {
+      const checkedCount = Object.keys(h.completedDates || {}).length;
+      const goal = h.goal || daysInMonth;
+      let actual = 0;
+      
+      if (h.type === 'build') {
+        actual = checkedCount;
+      } else {
+        // Break Habit: Actual Clean Days = Goal - Checked Days (Relapses)
+        // If I wanted 30 clean days, and I smoked 2 days, my actual is 28.
+        actual = Math.max(0, goal - checkedCount); 
+      }
+
+      return {
+        name: h.title,
+        actual: actual,
+        goal: goal,
+        type: h.type,
+        id: h.id 
+      };
+    });
 
     // 2. Cumulative Trend Data
     const runningCounts = {};
     habits.forEach(h => { runningCounts[h.id] = 0; });
+    const todayKey = formatDateKey(new Date());
 
     const cumulativeData = daysArray.map(day => {
       const dataPoint = { day: day.day };
-      habits.forEach(h => {
-        if (h.completedDates?.[day.dateKey]) {
-          runningCounts[h.id] += 1;
-        }
-        dataPoint[h.title] = runningCounts[h.id]; 
-        dataPoint[h.id] = runningCounts[h.id];
-      });
+      
+      // Only process past/present days
+      if (day.dateKey <= todayKey) {
+        habits.forEach(h => {
+          const isChecked = h.completedDates?.[day.dateKey];
+          
+          if (h.type === 'build') {
+            if (isChecked) runningCounts[h.id] += 1;
+          } else {
+            // Break Habit: Inverse. 
+            // NOT checking the box means you succeeded (Clean Day).
+            if (!isChecked) runningCounts[h.id] += 1;
+          }
+          
+          dataPoint[h.title] = runningCounts[h.id]; 
+          dataPoint[h.id] = runningCounts[h.id];
+        });
+      }
       return dataPoint;
     });
 
-    // 3. Weekday Consistency
-    const weekdayCounts = { 'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0 };
-    const weekdayOpportunities = { 'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0 };
-    const todayKey = formatDateKey(new Date());
+    // 3. Weekday Consistency (SPLIT RADAR DATA)
+    const weekdayCountsBuild = { 'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0 };
+    const weekdayCountsBreak = { 'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0 };
+    
+    // Track opportunities separately because you might not have any break habits
+    const weekdayOpportunitiesBuild = { 'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0 };
+    const weekdayOpportunitiesBreak = { 'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0 };
+
+    const buildHabitsCount = habits.filter(h => h.type === 'build').length;
+    const breakHabitsCount = habits.filter(h => h.type === 'break').length;
 
     daysArray.forEach(d => {
       const dateObj = new Date(year, month, d.day);
       const shortDay = dateObj.toLocaleString('en-US', { weekday: 'short' });
 
       if (d.dateKey <= todayKey) {
-        if (weekdayOpportunities[shortDay] !== undefined) {
-           weekdayOpportunities[shortDay]++;
+        if (weekdayOpportunitiesBuild[shortDay] !== undefined) {
+           weekdayOpportunitiesBuild[shortDay]++;
+           weekdayOpportunitiesBreak[shortDay]++;
+           
            habits.forEach(h => {
-             if (h.completedDates?.[d.dateKey]) {
-               weekdayCounts[shortDay]++;
+             const isChecked = h.completedDates?.[d.dateKey];
+             if (h.type === 'build') {
+               if (isChecked) weekdayCountsBuild[shortDay]++;
+             } else {
+               // Break Habit: Inverse. Unchecked = Consistent.
+               if (!isChecked) weekdayCountsBreak[shortDay]++;
              }
            });
         }
       }
     });
 
-    const radarData = Object.keys(weekdayCounts).map(day => {
-       const totalPossible = weekdayOpportunities[day] * habits.length;
-       const actual = weekdayCounts[day];
-       const percent = totalPossible > 0 ? Math.round((actual / totalPossible) * 100) : 0;
-       return { subject: day, A: percent, fullMark: 100 };
+    const radarData = Object.keys(weekdayCountsBuild).map(day => {
+       const totalPossibleBuild = weekdayOpportunitiesBuild[day] * buildHabitsCount;
+       const totalPossibleBreak = weekdayOpportunitiesBreak[day] * breakHabitsCount;
+       
+       const percentBuild = totalPossibleBuild > 0 ? Math.round((weekdayCountsBuild[day] / totalPossibleBuild) * 100) : 0;
+       const percentBreak = totalPossibleBreak > 0 ? Math.round((weekdayCountsBreak[day] / totalPossibleBreak) * 100) : 0;
+       
+       return { 
+         subject: day, 
+         Build: percentBuild, 
+         Break: percentBreak,
+         fullMark: 100 
+       };
     });
 
-    // 4. Daily Progress
-    const todayDateKey = formatDateKey(new Date());
-    const totalHabits = habits.length;
-    const completedToday = habits.filter(h => h.completedDates?.[todayDateKey]).length;
-    const remainingToday = totalHabits - completedToday;
+    // 4. Daily Progress (Double Pie)
+    let successBuild = 0;
+    let successBreak = 0;
+    
+    habits.forEach(h => {
+      const isChecked = h.completedDates?.[todayKey];
+      if (h.type === 'build') {
+        if (isChecked) successBuild++;
+      } else {
+        // Break: Not checking = Success for today
+        if (!isChecked) successBreak++;
+      }
+    });
+    
+    const remainingBuild = buildHabitsCount - successBuild;
+    const remainingBreak = breakHabitsCount - successBreak;
 
-    const dailyProgressData = [
-      { name: 'Done', value: completedToday },
-      { name: 'Remaining', value: remainingToday }
+    // Inner Ring: Build
+    const pieDataBuild = [
+      { name: 'Done', value: successBuild },
+      { name: 'Remaining', value: remainingBuild }
+    ];
+    // Outer Ring: Break
+    const pieDataBreak = [
+      { name: 'Done', value: successBreak },
+      { name: 'Remaining', value: remainingBreak }
     ];
 
-    return { cumulativeData, goalData, radarData, dailyProgressData, completedToday, totalHabits };
+    // Calculate overall success for center text
+    const totalHabits = habits.length;
+    const overallSuccess = successBuild + successBreak;
+
+    return { 
+      cumulativeData, 
+      goalData, 
+      radarData, 
+      pieDataBuild,
+      pieDataBreak,
+      completedToday: overallSuccess, 
+      totalHabits 
+    };
   }, [habits, daysArray, daysInMonth, year, month]);
 
   const buildHabits = habits.filter(h => h.type === 'build');
@@ -694,7 +808,10 @@ export default function HabitTracker() {
               <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
                  <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><Zap className="w-4 h-4 text-zinc-500" /> Consistency</h3>
-                    <span className="text-[10px] font-medium px-2 py-1 bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-500">By Weekday</span>
+                    <div className="flex gap-2 text-[10px] font-medium">
+                       <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 rounded">Build</span>
+                       <span className="px-2 py-1 bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 rounded">Break</span>
+                    </div>
                  </div>
                  <div className="h-64 w-full flex items-center justify-center">
                     <ResponsiveContainer width="100%" height="100%">
@@ -703,17 +820,25 @@ export default function HabitTracker() {
                           <PolarAngleAxis dataKey="subject" tick={{ fill: darkMode ? '#71717a' : '#a1a1aa', fontSize: 11, fontWeight: 500 }} />
                           <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
                           <Radar
-                            name="Consistency"
-                            dataKey="A"
+                            name="Build"
+                            dataKey="Build"
                             stroke="#10b981"
                             strokeWidth={2}
                             fill="#10b981"
                             fillOpacity={0.2}
                           />
+                          <Radar
+                            name="Break"
+                            dataKey="Break"
+                            stroke="#f43f5e"
+                            strokeWidth={2}
+                            fill="#f43f5e"
+                            fillOpacity={0.2}
+                          />
                           <Tooltip 
                             contentStyle={{borderRadius: '6px', border: 'none', backgroundColor: darkMode ? '#09090b' : '#fff', color: darkMode ? '#fff' : '#000', fontSize: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
-                            formatter={(value) => [`${value}%`, 'Consistency']}
                           />
+                          <Legend iconType="circle" wrapperStyle={{fontSize: '11px', paddingTop: '10px', color: '#71717a'}} />
                        </RadarChart>
                     </ResponsiveContainer>
                  </div>
@@ -723,29 +848,54 @@ export default function HabitTracker() {
               <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
                  <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><CheckCircle className="w-4 h-4 text-zinc-500" /> Daily Focus</h3>
-                    <span className="text-[10px] font-medium px-2 py-1 bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-500">Today</span>
+                    <div className="flex gap-2 text-[10px] font-medium">
+                       <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 rounded">Build (In)</span>
+                       <span className="px-2 py-1 bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 rounded">Break (Out)</span>
+                    </div>
                  </div>
                  <div className="h-64 w-full flex items-center justify-center relative">
                    {stats?.totalHabits > 0 ? (
                     <>
                       <ResponsiveContainer width="100%" height="100%">
                          <PieChart>
+                            {/* Inner Ring: Build */}
                             <Pie
-                              data={stats.dailyProgressData}
+                              data={stats.pieDataBuild}
                               cx="50%"
                               cy="50%"
-                              innerRadius={60}
-                              outerRadius={80}
+                              innerRadius={50}
+                              outerRadius={70}
                               paddingAngle={4}
                               dataKey="value"
                               startAngle={90}
                               endAngle={-270}
                               cornerRadius={4}
                             >
-                              {stats.dailyProgressData.map((entry, index) => (
+                              {stats.pieDataBuild.map((entry, index) => (
                                 <Cell 
                                   key={`cell-${index}`} 
-                                  fill={entry.name === 'Done' ? PROGRESS_COLORS[darkMode ? 'DoneDark' : 'Done'] : (darkMode ? PROGRESS_COLORS.RemainingDark : PROGRESS_COLORS.Remaining)} 
+                                  fill={entry.name === 'Done' ? '#10b981' : (darkMode ? '#27272a' : '#e4e4e7')} 
+                                  strokeWidth={0} 
+                                />
+                              ))}
+                            </Pie>
+                            {/* Outer Ring: Break */}
+                            <Pie
+                              data={stats.pieDataBreak}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={75}
+                              outerRadius={95}
+                              paddingAngle={4}
+                              dataKey="value"
+                              startAngle={90}
+                              endAngle={-270}
+                              cornerRadius={4}
+                            >
+                              {stats.pieDataBreak.map((entry, index) => (
+                                <Cell 
+                                  key={`cell-${index}`} 
+                                  fill={entry.name === 'Done' ? '#f43f5e' : (darkMode ? '#27272a' : '#e4e4e7')} 
                                   strokeWidth={0} 
                                 />
                               ))}
@@ -757,10 +907,10 @@ export default function HabitTracker() {
                       </ResponsiveContainer>
                       {/* Center Label */}
                       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                         <span className="text-4xl font-bold text-zinc-900 dark:text-white tracking-tighter">
+                         <span className="text-3xl font-bold text-zinc-900 dark:text-white tracking-tighter">
                            {Math.round((stats.completedToday / stats.totalHabits) * 100)}%
                          </span>
-                         <span className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mt-1 font-medium">Complete</span>
+                         <span className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mt-1 font-medium">Success</span>
                       </div>
                     </>
                    ) : (
