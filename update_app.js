@@ -1,4 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import fs from 'fs';
+import path from 'path';
+
+const appCode = `import React, { useState, useEffect, useMemo } from 'react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
@@ -338,22 +341,22 @@ export default function HabitTracker() {
                 <button
                   type="button"
                   onClick={() => setNewHabitType('build')}
-                  className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-all border ${
+                  className={\`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-all border \${
                     newHabitType === 'build'
                       ? 'bg-emerald-100 border-emerald-200 text-emerald-800 shadow-sm'
                       : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
-                  }`}
+                  }\`}
                 >
                   <Leaf className="w-3.5 h-3.5" /> Build
                 </button>
                 <button
                   type="button"
                   onClick={() => setNewHabitType('break')}
-                  className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-all border ${
+                  className={\`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-all border \${
                     newHabitType === 'break'
                       ? 'bg-rose-100 border-rose-200 text-rose-800 shadow-sm'
                       : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
-                  }`}
+                  }\`}
                 >
                   <Skull className="w-3.5 h-3.5" /> Break
                 </button>
@@ -396,11 +399,11 @@ export default function HabitTracker() {
                       Habit
                     </th>
                     {daysArray.map((d) => (
-                      <th key={d.day} className={`p-1 text-center min-w-[32px] border-r border-dashed border-gray-200 last:border-none ${d.isWeekend ? 'bg-gray-50/50' : ''}`}>
-                        <div className={`text-[10px] mb-1 font-medium uppercase ${d.isToday ? 'text-emerald-600' : 'text-gray-400'}`}>
+                      <th key={d.day} className={\`p-1 text-center min-w-[32px] border-r border-dashed border-gray-200 last:border-none \${d.isWeekend ? 'bg-gray-50/50' : ''}\`}>
+                        <div className={\`text-[10px] mb-1 font-medium uppercase \${d.isToday ? 'text-emerald-600' : 'text-gray-400'}\`}>
                           {d.weekday[0]}
                         </div>
-                        <div className={`text-sm font-bold ${d.isToday ? 'bg-emerald-600 text-white w-6 h-6 flex items-center justify-center rounded-full mx-auto shadow-sm' : 'text-slate-700'}`}>
+                        <div className={\`text-sm font-bold \${d.isToday ? 'bg-emerald-600 text-white w-6 h-6 flex items-center justify-center rounded-full mx-auto shadow-sm' : 'text-slate-700'}\`}>
                           {d.day}
                         </div>
                       </th>
@@ -437,26 +440,26 @@ export default function HabitTracker() {
                         return (
                           <td 
                             key={d.day} 
-                            className={`p-1 text-center border-r border-dashed border-gray-200 cursor-pointer select-none transition-colors
-                              ${d.isWeekend ? 'bg-gray-50/30' : ''}
-                              ${isCompleted ? `${bgClass}/50` : 'hover:bg-gray-100'}
-                            `}
+                            className={\`p-1 text-center border-r border-dashed border-gray-200 cursor-pointer select-none transition-colors
+                              \${d.isWeekend ? 'bg-gray-50/30' : ''}
+                              \${isCompleted ? \`\${bgClass}/50\` : 'hover:bg-gray-100'}
+                            \`}
                             onClick={() => toggleHabit(habit.id, d.dateKey)}
                           >
-                            <div className={`
+                            <div className={\`
                               w-5 h-5 mx-auto rounded flex items-center justify-center transition-all duration-200
-                              ${isCompleted 
-                                ? `${colorClass} text-white shadow-sm scale-100` 
+                              \${isCompleted 
+                                ? \`\${colorClass} text-white shadow-sm scale-100\` 
                                 : 'bg-gray-100 text-transparent scale-75 hover:scale-90'
                               }
-                            `}>
+                            \`}>
                               <Check className="w-3 h-3" strokeWidth={4} />
                             </div>
                           </td>
                         );
                       })}
                       <td className="p-2 text-center">
-                        <span className={`text-xs font-bold ${habit.type === 'build' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        <span className={\`text-xs font-bold \${habit.type === 'build' ? 'text-emerald-600' : 'text-rose-600'}\`}>
                           {Math.round((Object.keys(habit.completedDates || {}).length / daysInMonth) * 100)}%
                         </span>
                       </td>
@@ -520,3 +523,8 @@ export default function HabitTracker() {
     </div>
   );
 }
+`;
+
+// Fix path to handle src relative to cwd
+fs.writeFileSync(path.join('src', 'App.jsx'), appCode);
+console.log('Successfully updated src/App.jsx with mobile login fix!');
