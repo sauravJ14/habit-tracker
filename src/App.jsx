@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Analytics } from "@vercel/analytics/next"
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
@@ -7,7 +8,8 @@ import {
 import { 
   ChevronLeft, ChevronRight, Trash2, Check, X, Activity, 
   TrendingUp, ShieldAlert, Trophy, Calendar, Leaf, Skull, Plus, LogOut, User,
-  Moon, Sun, Lock, Smartphone, Target, Zap, CheckCircle, LayoutGrid, MoreHorizontal
+  Moon, Sun, Lock, Smartphone, Target, Zap, CheckCircle, LayoutGrid, MoreHorizontal,
+  Pencil, Save
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -132,7 +134,7 @@ const CustomAreaTooltip = ({ active, payload, label, darkMode }) => {
   if (active && payload && payload.length) {
     return (
       <div className={`px-3 py-2 rounded-md border text-xs shadow-md ${darkMode ? 'bg-zinc-950 border-zinc-800 text-zinc-50' : 'bg-white border-zinc-200 text-zinc-900'}`}>
-        <p className="font-semibold mb-2 pb-1 border-b border-zinc-200 dark:border-zinc-800">Day {label}</p>
+        <p className="font-semibold mb-2 pb-1 border-b border-zinc-200 dark:border-zinc-800">Date: {label}</p>
         <ul className="space-y-1">
           {payload.map((entry, idx) => (
             <li key={idx} className="flex items-center justify-between gap-4">
@@ -140,7 +142,7 @@ const CustomAreaTooltip = ({ active, payload, label, darkMode }) => {
                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: entry.color }}></span>
                  <span className="text-muted-foreground">{entry.name}</span>
               </span>
-              <span className="font-mono font-medium">{entry.value}</span>
+              <span className="font-mono font-medium">{entry.value}%</span>
             </li>
           ))}
         </ul>
@@ -151,34 +153,53 @@ const CustomAreaTooltip = ({ active, payload, label, darkMode }) => {
 };
 
 // --- Sub-Component: Habit Table Section ---
-const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit, daysInMonth, isDarkMode }) => {
-  if (habits.length === 0) return null;
+const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit, updateHabitTitle, daysInMonth, isDarkMode }) => {
+  const [editingId, setEditingId] = useState(null);
+  const [editTitle, setEditTitle] = useState("");
+  const scrollContainerRef = useRef(null); // Ref for the scrollable container
 
-  // --- Auto-Scroll Logic ---
+  const startEditing = (habit) => {
+    setEditingId(habit.id);
+    setEditTitle(habit.title);
+  };
+
+  const saveEdit = (habitId) => {
+    if (editTitle.trim()) {
+      updateHabitTitle(habitId, editTitle);
+    }
+    setEditingId(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditTitle("");
+  };
+
+  // --- ROBUST AUTO-SCROLL LOGIC ---
   useEffect(() => {
+    // Small timeout to ensure DOM is fully rendered
     const timer = setTimeout(() => {
-      const todayElement = document.getElementById(`today-column-${type}`);
-      if (todayElement) {
-        todayElement.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      if (scrollContainerRef.current) {
+        // Find the column that corresponds to "Today"
+        const todayColumn = scrollContainerRef.current.querySelector('[data-today="true"]');
+        
+        if (todayColumn) {
+          // Calculate center position
+          const container = scrollContainerRef.current;
+          const scrollLeft = todayColumn.offsetLeft - (container.clientWidth / 2) + (todayColumn.clientWidth / 2);
+          
+          // Perform the scroll
+          container.scrollTo({
+            left: scrollLeft,
+            behavior: 'smooth'
+          });
+        }
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [daysArray, type]); 
+  }, [daysArray, type]);
 
-  const dailyTotals = daysArray.map(d => {
-    let successCount = 0;
-    habits.forEach(h => {
-      const isChecked = h.completedDates?.[d.dateKey];
-      if (h.type === 'build') {
-        if (isChecked) successCount++;
-      } else {
-        // Inverse Logic: Unchecked = Success (Clean day)
-        if (!isChecked) successCount++;
-      }
-    });
-    const totalActive = habits.length;
-    return totalActive > 0 ? Math.round((successCount / totalActive) * 100) : 0;
-  });
+  if (habits.length === 0) return null;
 
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden mb-8">
@@ -194,17 +215,19 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
         </span>
       </div>
       
-      <div className="overflow-x-auto pb-2 scrollbar-hide">
+      {/* Attached Ref to the scrollable div */}
+      <div ref={scrollContainerRef} className="overflow-x-auto pb-2 scrollbar-hide">
         <table className="w-full border-collapse min-w-[800px]">
           <thead>
             <tr className="border-b border-zinc-200 dark:border-zinc-800">
-              <th className="p-4 text-left text-xs font-medium text-zinc-500 dark:text-zinc-400 min-w-[200px] sticky left-0 bg-white dark:bg-zinc-900 z-20 border-r border-zinc-200 dark:border-zinc-800 shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)]">
+              <th className="p-4 text-left text-xs font-medium text-zinc-500 dark:text-zinc-400 min-w-[220px] sticky left-0 bg-white dark:bg-zinc-900 z-20 border-r border-zinc-200 dark:border-zinc-800 shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)]">
                 Habit Name
               </th>
               {daysArray.map((d) => (
                 <th 
                   key={d.day} 
-                  id={d.isToday ? `today-column-${type}` : undefined}
+                  // Added data attribute for easier finding
+                  data-today={d.isToday}
                   className={`p-1 text-center min-w-[40px] border-r border-dashed border-zinc-100 dark:border-zinc-800/50 last:border-none ${d.isWeekend ? 'bg-zinc-50/50 dark:bg-zinc-900/50' : ''} ${d.isToday ? 'bg-zinc-50 dark:bg-zinc-800/50' : ''}`}
                 >
                   <div className={`text-[10px] font-medium uppercase mb-1 ${d.isToday ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-400 dark:text-zinc-500'}`}>
@@ -221,37 +244,56 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
             {habits.map((habit) => {
               const checkedCount = Object.keys(habit.completedDates || {}).length;
               const habitGoal = habit.goal || daysInMonth;
-              
-              // Inverse Logic for Progress Bar
               let actualScore = 0;
               if (habit.type === 'build') {
                 actualScore = checkedCount;
               } else {
-                // Break: Start with full score (Goal), subtract checks. Clamp at 0.
                 actualScore = Math.max(0, habitGoal - checkedCount);
               }
-              
               const progressPercent = Math.min(100, Math.round((actualScore / habitGoal) * 100));
 
               return (
                 <tr key={habit.id} className="border-b border-zinc-100 dark:border-zinc-800/50 group hover:bg-zinc-50/50 dark:hover:bg-zinc-900/50 transition-colors">
                   <td className="p-3 sticky left-0 bg-white dark:bg-zinc-900 group-hover:bg-zinc-50/50 dark:group-hover:bg-zinc-900/50 transition-colors z-20 border-r border-zinc-200 dark:border-zinc-800 shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)] align-top">
                     <div className="flex flex-col gap-2">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-sm text-zinc-900 dark:text-zinc-100 truncate" title={habit.title}>
-                          {habit.title}
-                        </span>
-                        <button 
-                          onClick={() => deleteHabit(habit.id)}
-                          className="text-zinc-300 hover:text-rose-500 dark:text-zinc-600 dark:hover:text-rose-400 transition-colors opacity-0 group-hover:opacity-100"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                      <div className="flex items-center justify-between h-7">
+                        {editingId === habit.id ? (
+                          <div className="flex items-center gap-1 w-full">
+                            <input 
+                              type="text" 
+                              value={editTitle} 
+                              onChange={(e) => setEditTitle(e.target.value)}
+                              className="flex-1 min-w-0 text-xs bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded px-1.5 py-1 focus:outline-none focus:border-zinc-500"
+                              autoFocus
+                            />
+                            <button onClick={() => saveEdit(habit.id)} className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"><Check className="w-3 h-3" /></button>
+                            <button onClick={cancelEdit} className="p-1 text-zinc-400 hover:bg-zinc-100 rounded"><X className="w-3 h-3" /></button>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="font-medium text-sm text-zinc-900 dark:text-zinc-100 truncate max-w-[140px]" title={habit.title}>
+                              {habit.title}
+                            </span>
+                            <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button 
+                                onClick={() => startEditing(habit)}
+                                className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 p-1"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                              <button 
+                                onClick={() => deleteHabit(habit.id)}
+                                className="text-zinc-400 hover:text-rose-500 dark:hover:text-rose-400 p-1"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </>
+                        )}
                       </div>
                       
                       <div className="mt-1">
                          <div className="flex justify-between text-[10px] text-zinc-500 dark:text-zinc-400 font-medium mb-1.5">
-                            {/* Inverse display: Clean Days / Goal */}
                             <span>{actualScore} / {habitGoal}</span>
                             <span>{progressPercent}%</span>
                          </div>
@@ -267,8 +309,8 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
                   {daysArray.map((d) => {
                     const isCompleted = habit.completedDates?.[d.dateKey];
                     const todayKey = formatDateKey(new Date());
-                    const isPast = d.dateKey < todayKey;
                     const isFuture = d.dateKey > todayKey;
+                    const isPast = d.dateKey < todayKey;
                     
                     let cellContent = null;
                     let cellClass = "";
@@ -282,16 +324,12 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
                          cellContent = <Check className="w-4 h-4" strokeWidth={3} />;
                        }
                     } else {
-                       // Break Habit Inverse Visuals
                        if (isCompleted) {
-                         // Checked = Failed (Red X)
                          cellClass = "bg-rose-500 border-rose-500 text-white shadow-sm";
                          cellContent = <X className="w-4 h-4" strokeWidth={3} />;
                        } else {
-                         // Empty = Success (Clean)
                          cellClass = "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-transparent hover:border-zinc-300 dark:hover:border-zinc-700";
-                         // We show nothing in empty cell for break habits (clean look), or maybe a faint dot?
-                         // Let's keep it empty but implied good.
+                         cellContent = <X className="w-4 h-4" strokeWidth={3} />;
                        }
                     }
 
@@ -317,20 +355,6 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
               );
             })}
           </tbody>
-          <tfoot>
-             <tr className="bg-zinc-50/50 dark:bg-zinc-900/50 border-t border-zinc-200 dark:border-zinc-800 font-medium text-[10px] text-zinc-500 dark:text-zinc-400">
-                <td className="p-3 sticky left-0 bg-zinc-50 dark:bg-zinc-900 z-20 border-r border-zinc-200 dark:border-zinc-800 shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)] uppercase tracking-wider">
-                   Daily Success
-                </td>
-                {dailyTotals.map((total, idx) => (
-                   <td key={idx} className="p-1 text-center border-r border-dashed border-zinc-200 dark:border-zinc-800/50">
-                      <span className={`${total >= 80 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : ''}`}>
-                        {total}%
-                      </span>
-                   </td>
-                ))}
-             </tr>
-          </tfoot>
         </table>
       </div>
     </div>
@@ -353,7 +377,16 @@ export default function HabitTracker() {
   
   const [newHabitTitle, setNewHabitTitle] = useState('');
   const [newHabitType, setNewHabitType] = useState('build');
-  const [newHabitGoal, setNewHabitGoal] = useState(20); 
+  const [newHabitGoal, setNewHabitGoal] = useState(31); // Default start
+
+  // --- AUTO UPDATE GOAL BASED ON TYPE ---
+  useEffect(() => {
+    if (newHabitType === 'build') {
+      setNewHabitGoal(31);
+    } else {
+      setNewHabitGoal(4);
+    }
+  }, [newHabitType]);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -401,12 +434,13 @@ export default function HabitTracker() {
       await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'habits'), {
         title: newHabitTitle, 
         type: newHabitType, 
-        goal: parseInt(newHabitGoal) || 20,
+        goal: parseInt(newHabitGoal),
         createdAt: Date.now(), 
         completedDates: {} 
       });
       setNewHabitTitle('');
-      setNewHabitGoal(20);
+      // Reset goal based on current type to be safe
+      setNewHabitGoal(newHabitType === 'build' ? 31 : 4);
     } catch (error) { console.error(error); }
   };
 
@@ -426,6 +460,11 @@ export default function HabitTracker() {
     try { await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'habits', habitId)); } catch (error) { console.error(error); }
   };
 
+  const updateHabitTitle = async (habitId, newTitle) => {
+    if (!user || !newTitle.trim()) return;
+    try { await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'habits', habitId), { title: newTitle }); } catch (error) { console.error(error); }
+  };
+
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
   const daysInMonth = getDaysInMonth(year, month);
@@ -441,7 +480,7 @@ export default function HabitTracker() {
     });
   }, [year, month, daysInMonth]);
 
-  // --- Statistics Calculations (UPDATED FOR INVERSE LOGIC) ---
+  // --- Statistics Calculations ---
   const stats = useMemo(() => {
     if (habits.length === 0) return null;
 
@@ -450,15 +489,11 @@ export default function HabitTracker() {
       const checkedCount = Object.keys(h.completedDates || {}).length;
       const goal = h.goal || daysInMonth;
       let actual = 0;
-      
       if (h.type === 'build') {
         actual = checkedCount;
       } else {
-        // Break Habit: Actual Clean Days = Goal - Checked Days (Relapses)
-        // If I wanted 30 clean days, and I smoked 2 days, my actual is 28.
         actual = Math.max(0, goal - checkedCount); 
       }
-
       return {
         name: h.title,
         actual: actual,
@@ -468,39 +503,39 @@ export default function HabitTracker() {
       };
     });
 
-    // 2. Cumulative Trend Data
+    // 2. Cumulative Trend Data (CONSISTENCY PERCENTAGE)
+    // Calculate: (Successful Days / Days Passed) * 100
     const runningCounts = {};
     habits.forEach(h => { runningCounts[h.id] = 0; });
     const todayKey = formatDateKey(new Date());
 
     const cumulativeData = daysArray.map(day => {
-      const dataPoint = { day: day.day };
+      // Display formatted date string like "Nov 1"
+      const displayDate = new Date(year, month, day.day).toLocaleString('default', { month: 'short', day: 'numeric' });
+      const dataPoint = { day: displayDate, originalDate: day.dateKey };
       
-      // Only process past/present days
       if (day.dateKey <= todayKey) {
         habits.forEach(h => {
           const isChecked = h.completedDates?.[day.dateKey];
-          
           if (h.type === 'build') {
             if (isChecked) runningCounts[h.id] += 1;
           } else {
-            // Break Habit: Inverse. 
-            // NOT checking the box means you succeeded (Clean Day).
             if (!isChecked) runningCounts[h.id] += 1;
           }
           
-          dataPoint[h.title] = runningCounts[h.id]; 
-          dataPoint[h.id] = runningCounts[h.id];
+          // Calculate Percentage for this day
+          const percentage = Math.round((runningCounts[h.id] / day.day) * 100);
+          
+          dataPoint[h.title] = percentage; 
+          dataPoint[h.id] = percentage;
         });
       }
       return dataPoint;
     });
 
-    // 3. Weekday Consistency (SPLIT RADAR DATA)
+    // 3. Weekday Consistency
     const weekdayCountsBuild = { 'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0 };
     const weekdayCountsBreak = { 'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0 };
-    
-    // Track opportunities separately because you might not have any break habits
     const weekdayOpportunitiesBuild = { 'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0 };
     const weekdayOpportunitiesBreak = { 'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0 };
 
@@ -521,7 +556,6 @@ export default function HabitTracker() {
              if (h.type === 'build') {
                if (isChecked) weekdayCountsBuild[shortDay]++;
              } else {
-               // Break Habit: Inverse. Unchecked = Consistent.
                if (!isChecked) weekdayCountsBreak[shortDay]++;
              }
            });
@@ -536,15 +570,10 @@ export default function HabitTracker() {
        const percentBuild = totalPossibleBuild > 0 ? Math.round((weekdayCountsBuild[day] / totalPossibleBuild) * 100) : 0;
        const percentBreak = totalPossibleBreak > 0 ? Math.round((weekdayCountsBreak[day] / totalPossibleBreak) * 100) : 0;
        
-       return { 
-         subject: day, 
-         Build: percentBuild, 
-         Break: percentBreak,
-         fullMark: 100 
-       };
+       return { subject: day, Build: percentBuild, Break: percentBreak, fullMark: 100 };
     });
 
-    // 4. Daily Progress (Double Pie)
+    // 4. Daily Progress
     let successBuild = 0;
     let successBreak = 0;
     
@@ -553,7 +582,6 @@ export default function HabitTracker() {
       if (h.type === 'build') {
         if (isChecked) successBuild++;
       } else {
-        // Break: Not checking = Success for today
         if (!isChecked) successBreak++;
       }
     });
@@ -561,30 +589,19 @@ export default function HabitTracker() {
     const remainingBuild = buildHabitsCount - successBuild;
     const remainingBreak = breakHabitsCount - successBreak;
 
-    // Inner Ring: Build
     const pieDataBuild = [
       { name: 'Done', value: successBuild },
       { name: 'Remaining', value: remainingBuild }
     ];
-    // Outer Ring: Break
     const pieDataBreak = [
       { name: 'Done', value: successBreak },
       { name: 'Remaining', value: remainingBreak }
     ];
 
-    // Calculate overall success for center text
-    const totalHabits = habits.length;
     const overallSuccess = successBuild + successBreak;
+    const totalHabits = habits.length;
 
-    return { 
-      cumulativeData, 
-      goalData, 
-      radarData, 
-      pieDataBuild,
-      pieDataBreak,
-      completedToday: overallSuccess, 
-      totalHabits 
-    };
+    return { cumulativeData, goalData, radarData, pieDataBuild, pieDataBreak, completedToday: overallSuccess, totalHabits };
   }, [habits, daysArray, daysInMonth, year, month]);
 
   const buildHabits = habits.filter(h => h.type === 'build');
@@ -617,44 +634,34 @@ export default function HabitTracker() {
         {/* Header */}
         <div className="max-w-7xl mx-auto mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
-             {/* LOGO */}
              <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-zinc-900 dark:bg-zinc-50 rounded-md flex items-center justify-center">
                   <Leaf className="w-4 h-4 text-zinc-50 dark:text-zinc-900" />
                 </div>
                 <span className="font-bold text-lg tracking-tight text-zinc-900 dark:text-white hidden md:block">FocusLab</span>
              </div>
-
              <div className="h-6 w-px bg-zinc-200 dark:bg-zinc-800 mx-2 hidden md:block"></div>
-
-             {/* Date Display */}
              <div>
                <h1 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight leading-none">{monthName}</h1>
                <p className="text-zinc-500 dark:text-zinc-400 text-[10px] uppercase tracking-widest font-medium mt-0.5">{year}</p>
              </div>
           </div>
-
           <div className="flex items-center gap-2 md:gap-3 self-end md:self-auto w-full md:w-auto justify-end">
              <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 p-1 rounded-md border border-zinc-200 dark:border-zinc-800">
                 <button onClick={() => setCurrentDate(new Date(year, month - 1, 1))} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-500 dark:text-zinc-400"><ChevronLeft className="w-4 h-4" /></button>
                 <span className="text-xs font-bold min-w-[60px] text-center uppercase text-zinc-700 dark:text-zinc-300">{monthName.substring(0,3)}</span>
                 <button onClick={() => setCurrentDate(new Date(year, month + 1, 1))} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-500 dark:text-zinc-400"><ChevronRight className="w-4 h-4" /></button>
              </div>
-
              <div className="h-8 w-px bg-zinc-200 dark:bg-zinc-800 mx-1 hidden md:block"></div>
-
              <button onClick={() => setDarkMode(!darkMode)} className="bg-white dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 p-2 rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors">{darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}</button>
-             
              <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden border border-zinc-200 dark:border-zinc-700">
                 {user.photoURL ? <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-zinc-400"><User className="w-4 h-4" /></div>}
              </div>
-             
              <button onClick={handleLogout} className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 p-2"><LogOut className="w-4 h-4" /></button>
           </div>
         </div>
 
         <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-8 items-start">
-          
           {/* Sidebar */}
           <div className="space-y-4 sticky top-4 z-30">
             <div className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
@@ -665,7 +672,6 @@ export default function HabitTracker() {
                     <label className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">Name</label>
                     <input type="text" placeholder="e.g. Read 30 mins" value={newHabitTitle} onChange={(e) => setNewHabitTitle(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-2 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-zinc-100 transition-all" />
                   </div>
-                  
                   <div>
                     <label className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400 uppercase mb-1 block">Goal (Days/Mo)</label>
                     <div className="flex gap-2">
@@ -678,12 +684,10 @@ export default function HabitTracker() {
                       </div>
                     </div>
                   </div>
-                  
                   <button type="submit" disabled={!newHabitTitle.trim()} className="w-full bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 py-2.5 rounded-md flex items-center justify-center hover:bg-zinc-900/90 dark:hover:bg-zinc-100/90 disabled:opacity-50 text-sm font-medium transition-colors mt-2">Create Habit</button>
                 </div>
               </form>
             </div>
-            
             <div className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex justify-between items-center">
                <div className="flex items-center gap-2.5">
                  <div className="p-1.5 rounded-md bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600">
@@ -697,11 +701,10 @@ export default function HabitTracker() {
 
           {/* Content */}
           <div className="space-y-8 min-w-0">
-            
             {/* Tables */}
             <div className="space-y-6">
-              <HabitSection title="Build Habits" type="build" habits={buildHabits} daysArray={daysArray} toggleHabit={toggleHabit} deleteHabit={deleteHabit} daysInMonth={daysInMonth} isDarkMode={darkMode} />
-              <HabitSection title="Break Habits" type="break" habits={breakHabits} daysArray={daysArray} toggleHabit={toggleHabit} deleteHabit={deleteHabit} daysInMonth={daysInMonth} isDarkMode={darkMode} />
+              <HabitSection title="Build Habits" type="build" habits={buildHabits} daysArray={daysArray} toggleHabit={toggleHabit} deleteHabit={deleteHabit} updateHabitTitle={updateHabitTitle} daysInMonth={daysInMonth} isDarkMode={darkMode} />
+              <HabitSection title="Break Habits" type="break" habits={breakHabits} daysArray={daysArray} toggleHabit={toggleHabit} deleteHabit={deleteHabit} updateHabitTitle={updateHabitTitle} daysInMonth={daysInMonth} isDarkMode={darkMode} />
             </div>
             
             {habits.length === 0 && (
@@ -722,8 +725,8 @@ export default function HabitTracker() {
               {/* CHART 1: Trends */}
               <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
                 <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-zinc-500" /> Trends</h3>
-                  <span className="text-[10px] font-medium px-2 py-1 bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-500">Cumulative</span>
+                  <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-zinc-500" /> Consistency</h3>
+                  <span className="text-[10px] font-medium px-2 py-1 bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-500">% Over Time</span>
                 </div>
                 <div className="h-64 w-full">
                   <ResponsiveContainer width="100%" height="100%">
@@ -741,7 +744,7 @@ export default function HabitTracker() {
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? '#27272a' : '#f4f4f5'} />
                       <XAxis dataKey="day" tickLine={false} axisLine={false} tick={{fontSize: 10, fill: '#a1a1aa'}} interval={4} />
-                      <YAxis hide domain={[0, 'auto']} />
+                      <YAxis hide domain={[0, 100]} />
                       <Tooltip content={<CustomAreaTooltip darkMode={darkMode} />} cursor={{stroke: '#a1a1aa', strokeWidth: 1, strokeDasharray: '4 4'}} />
                       <Legend iconType="circle" wrapperStyle={{fontSize: '11px', paddingTop: '16px', color: '#71717a'}} />
                       {habits.map((habit, index) => (
@@ -819,25 +822,9 @@ export default function HabitTracker() {
                           <PolarGrid stroke={darkMode ? '#27272a' : '#e4e4e7'} />
                           <PolarAngleAxis dataKey="subject" tick={{ fill: darkMode ? '#71717a' : '#a1a1aa', fontSize: 11, fontWeight: 500 }} />
                           <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-                          <Radar
-                            name="Build"
-                            dataKey="Build"
-                            stroke="#10b981"
-                            strokeWidth={2}
-                            fill="#10b981"
-                            fillOpacity={0.2}
-                          />
-                          <Radar
-                            name="Break"
-                            dataKey="Break"
-                            stroke="#f43f5e"
-                            strokeWidth={2}
-                            fill="#f43f5e"
-                            fillOpacity={0.2}
-                          />
-                          <Tooltip 
-                            contentStyle={{borderRadius: '6px', border: 'none', backgroundColor: darkMode ? '#09090b' : '#fff', color: darkMode ? '#fff' : '#000', fontSize: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
-                          />
+                          <Radar name="Build" dataKey="Build" stroke="#10b981" strokeWidth={2} fill="#10b981" fillOpacity={0.2} />
+                          <Radar name="Break" dataKey="Break" stroke="#f43f5e" strokeWidth={2} fill="#f43f5e" fillOpacity={0.2} />
+                          <Tooltip contentStyle={{borderRadius: '6px', border: 'none', backgroundColor: darkMode ? '#09090b' : '#fff', color: darkMode ? '#fff' : '#000', fontSize: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
                           <Legend iconType="circle" wrapperStyle={{fontSize: '11px', paddingTop: '10px', color: '#71717a'}} />
                        </RadarChart>
                     </ResponsiveContainer>
@@ -849,8 +836,8 @@ export default function HabitTracker() {
                  <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><CheckCircle className="w-4 h-4 text-zinc-500" /> Daily Focus</h3>
                     <div className="flex gap-2 text-[10px] font-medium">
-                       <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 rounded">Build (In)</span>
-                       <span className="px-2 py-1 bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 rounded">Break (Out)</span>
+                       <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 rounded">Build (Out)</span>
+                       <span className="px-2 py-1 bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 rounded">Break (In)</span>
                     </div>
                  </div>
                  <div className="h-64 w-full flex items-center justify-center relative">
@@ -858,51 +845,19 @@ export default function HabitTracker() {
                     <>
                       <ResponsiveContainer width="100%" height="100%">
                          <PieChart>
-                            {/* Inner Ring: Build */}
-                            <Pie
-                              data={stats.pieDataBuild}
-                              cx="50%"
-                              cy="50%"
-                              innerRadius={50}
-                              outerRadius={70}
-                              paddingAngle={4}
-                              dataKey="value"
-                              startAngle={90}
-                              endAngle={-270}
-                              cornerRadius={4}
-                            >
+                            {/* Outer Ring: Build (Swapped as requested) */}
+                            <Pie data={stats.pieDataBuild} cx="50%" cy="50%" innerRadius={75} outerRadius={95} paddingAngle={4} dataKey="value" startAngle={90} endAngle={-270} cornerRadius={4}>
                               {stats.pieDataBuild.map((entry, index) => (
-                                <Cell 
-                                  key={`cell-${index}`} 
-                                  fill={entry.name === 'Done' ? '#10b981' : (darkMode ? '#27272a' : '#e4e4e7')} 
-                                  strokeWidth={0} 
-                                />
+                                <Cell key={`cell-${index}`} fill={entry.name === 'Done' ? '#10b981' : (darkMode ? '#27272a' : '#e4e4e7')} strokeWidth={0} />
                               ))}
                             </Pie>
-                            {/* Outer Ring: Break */}
-                            <Pie
-                              data={stats.pieDataBreak}
-                              cx="50%"
-                              cy="50%"
-                              innerRadius={75}
-                              outerRadius={95}
-                              paddingAngle={4}
-                              dataKey="value"
-                              startAngle={90}
-                              endAngle={-270}
-                              cornerRadius={4}
-                            >
+                            {/* Inner Ring: Break (Swapped as requested) */}
+                            <Pie data={stats.pieDataBreak} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={4} dataKey="value" startAngle={90} endAngle={-270} cornerRadius={4}>
                               {stats.pieDataBreak.map((entry, index) => (
-                                <Cell 
-                                  key={`cell-${index}`} 
-                                  fill={entry.name === 'Done' ? '#f43f5e' : (darkMode ? '#27272a' : '#e4e4e7')} 
-                                  strokeWidth={0} 
-                                />
+                                <Cell key={`cell-${index}`} fill={entry.name === 'Done' ? '#f43f5e' : (darkMode ? '#27272a' : '#e4e4e7')} strokeWidth={0} />
                               ))}
                             </Pie>
-                            <Tooltip 
-                              contentStyle={{borderRadius: '6px', border: 'none', backgroundColor: darkMode ? '#09090b' : '#fff', color: darkMode ? '#fff' : '#000', fontSize: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
-                            />
+                            <Tooltip contentStyle={{borderRadius: '6px', border: 'none', backgroundColor: darkMode ? '#09090b' : '#fff', color: darkMode ? '#fff' : '#000', fontSize: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
                          </PieChart>
                       </ResponsiveContainer>
                       {/* Center Label */}
