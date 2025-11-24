@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
@@ -25,6 +25,9 @@ import {
 import { 
   getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query 
 } from 'firebase/firestore';
+
+// UNCOMMENT THE LINE BELOW FOR VERCEL ANALYTICS
+// import { Analytics } from "@vercel/analytics/react";
 
 // --- Tailwind Configuration Override ---
 if (typeof window !== 'undefined') {
@@ -174,34 +177,38 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
     setEditTitle("");
   };
 
-  // --- FIX: Precise Auto-Scroll Logic ---
-  useEffect(() => {
-    const timer = setTimeout(() => {
+  // --- FIX: Ultra-Robust Auto-Scroll ---
+  useLayoutEffect(() => {
+    const scrollLogic = () => {
       const container = scrollContainerRef.current;
-      if (container) {
-        const todayColumn = container.querySelector('[data-today="true"]');
-        
-        if (todayColumn) {
-          // Calculate exactly where to scroll to center the element
-          // (Element Left - Container Left) - (Half Container Width) + (Half Element Width) + Current Scroll
-          const containerRect = container.getBoundingClientRect();
-          const todayRect = todayColumn.getBoundingClientRect();
-          
-          const scrollLeft = 
-            container.scrollLeft + 
-            (todayRect.left - containerRect.left) - 
-            (container.clientWidth / 2) + 
-            (todayRect.width / 2);
+      if (!container) return;
 
-          container.scrollTo({
-            left: scrollLeft,
-            behavior: 'smooth'
-          });
-        }
+      const todayColumn = container.querySelector('[data-is-today="true"]');
+      
+      if (todayColumn) {
+        // Calculate center position manually
+        const containerWidth = container.clientWidth;
+        const columnLeft = todayColumn.offsetLeft;
+        const columnWidth = todayColumn.clientWidth;
+        
+        // Target scroll position
+        const targetScroll = columnLeft - (containerWidth / 2) + (columnWidth / 2);
+        
+        container.scrollTo({
+          left: targetScroll,
+          behavior: 'auto' // Instant jump, no smooth animation that might get interrupted
+        });
       }
-    }, 600); // Increased delay slightly to ensure layout is fully painted
+    };
+
+    // Run immediately after layout paint
+    scrollLogic();
+    
+    // Also run after a tiny delay in case of images/fonts shifting layout
+    const timer = setTimeout(scrollLogic, 100);
+    
     return () => clearTimeout(timer);
-  }, [daysArray, type]);
+  }, [daysArray, habits.length]); // Re-run when data changes
 
   if (habits.length === 0) return null;
 
@@ -229,10 +236,10 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
               {daysArray.map((d) => (
                 <th 
                   key={d.day} 
-                  data-today={d.isToday} // Vital for auto-scroll
-                  className={`p-1 text-center min-w-[40px] border-r border-dashed border-zinc-100 dark:border-zinc-800/50 last:border-none ${d.isWeekend ? 'bg-zinc-50/50 dark:bg-zinc-900/50' : ''} ${d.isToday ? 'bg-zinc-50 dark:bg-zinc-800/50' : ''}`}
+                  data-is-today={d.isToday ? "true" : "false"}
+                  className={`p-1 text-center min-w-[40px] border-r border-dashed border-zinc-100 dark:border-zinc-800/50 last:border-none ${d.isWeekend ? 'bg-zinc-50/50 dark:bg-zinc-900/50' : ''} ${d.isToday ? 'bg-zinc-100 dark:bg-zinc-800' : ''}`}
                 >
-                  <div className={`text-[10px] font-medium uppercase mb-1 ${d.isToday ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-400 dark:text-zinc-500'}`}>
+                  <div className={`text-[10px] font-medium uppercase mb-1 ${d.isToday ? 'text-zinc-900 dark:text-zinc-100 font-bold' : 'text-zinc-400 dark:text-zinc-500'}`}>
                     {d.weekday[0]}
                   </div>
                   <div className={`text-sm font-medium w-7 h-7 mx-auto flex items-center justify-center rounded-full ${d.isToday ? 'bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900' : 'text-zinc-700 dark:text-zinc-300'}`}>
@@ -312,6 +319,7 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
                     const isCompleted = habit.completedDates?.[d.dateKey];
                     const todayKey = formatDateKey(new Date());
                     const isFuture = d.dateKey > todayKey;
+                    const isPast = d.dateKey < todayKey;
                     
                     let cellContent = null;
                     let cellClass = "";
@@ -369,7 +377,7 @@ export default function HabitTracker() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [authLoading, setAuthLoading] = useState(true);
   
-  // State for Analytics Filtering
+  // State for Analytics Filtering - DEFAULTS TO BUILD
   const [analyticsFilter, setAnalyticsFilter] = useState('build'); 
   
   const [darkMode, setDarkMode] = useState(() => {
@@ -513,7 +521,7 @@ export default function HabitTracker() {
       };
     });
 
-    // 2. Cumulative Trend Data (CONSISTENCY PERCENTAGE)
+    // 2. Cumulative Trend Data
     const runningCounts = {};
     filteredHabits.forEach(h => { runningCounts[h.id] = 0; });
     const todayKey = formatDateKey(new Date());
@@ -539,7 +547,7 @@ export default function HabitTracker() {
       return dataPoint;
     });
 
-    // 3. Weekday Consistency (Uses filtered set)
+    // 3. Weekday Consistency
     const weekdayCounts = { 'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0 };
     const weekdayOpportunities = { 'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0 };
 
@@ -549,7 +557,6 @@ export default function HabitTracker() {
 
       if (d.dateKey <= todayKey) {
         if (weekdayOpportunities[shortDay] !== undefined) {
-           // Add opportunities for every filtered habit
            weekdayOpportunities[shortDay] += filteredHabits.length;
            
            filteredHabits.forEach(h => {
@@ -571,10 +578,17 @@ export default function HabitTracker() {
        return { subject: day, A: percent, fullMark: 100 };
     });
 
-    // 4. Daily Progress
+    // 4. Daily Progress (Filtered for SUCCESS METRIC)
     let successCount = 0;
     
-    filteredHabits.forEach(h => {
+    // Use analyticsFilter to decide which habits to count for "Today's Success"
+    // If 'all' is selected, we DEFAULT to BUILD habits only to prevent inflation
+    // If specific filter is selected (e.g. 'break'), we show that specific success
+    const successHabits = analyticsFilter === 'all' 
+      ? habits.filter(h => h.type === 'build') 
+      : filteredHabits;
+    
+    successHabits.forEach(h => {
       const isChecked = h.completedDates?.[todayKey];
       if (h.type === 'build') {
         if (isChecked) successCount++;
@@ -583,8 +597,8 @@ export default function HabitTracker() {
       }
     });
     
-    const totalFiltered = filteredHabits.length;
-    const remainingCount = totalFiltered - successCount;
+    const totalForSuccess = successHabits.length;
+    const remainingCount = Math.max(0, totalForSuccess - successCount);
 
     const dailyProgressData = [
       { name: 'Done', value: successCount },
@@ -597,7 +611,7 @@ export default function HabitTracker() {
       radarData, 
       dailyProgressData, 
       completedToday: successCount, 
-      totalHabits: totalFiltered,
+      totalHabits: totalForSuccess, 
       filteredHabits 
     };
   }, [habits, daysArray, daysInMonth, year, month, analyticsFilter]);
@@ -627,6 +641,8 @@ export default function HabitTracker() {
 
   return (
     <div className={`${darkMode ? 'dark' : ''}`}>
+      {/* UNCOMMENT BELOW FOR PRODUCTION */}
+      {/* <Analytics /> */}
       <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans p-4 md:p-8 overflow-x-hidden transition-colors duration-300">
         
         {/* Header */}
@@ -848,7 +864,7 @@ export default function HabitTracker() {
               <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
                  <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><CheckCircle className="w-4 h-4 text-zinc-500" /> Daily Focus</h3>
-                    <span className="text-[10px] font-medium px-2 py-1 bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-500">Today</span>
+                    <span className="text-[10px] font-medium px-2 py-1 bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-500">Today ({analyticsFilter === 'break' ? 'Break' : 'Build'})</span>
                  </div>
                  <div className="h-64 w-full flex items-center justify-center relative">
                    {stats?.totalHabits > 0 ? (
