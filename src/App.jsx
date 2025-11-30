@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight, Trash2, Check, X, Activity, 
   TrendingUp, ShieldAlert, Trophy, Calendar, Leaf, Skull, Plus, LogOut, User,
   Moon, Sun, Lock, Smartphone, Target, Zap, CheckCircle, LayoutGrid, MoreHorizontal,
-  Pencil, Save, Filter
+  Pencil, Save, Filter, Eye, EyeOff
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -155,12 +155,13 @@ const CustomAreaTooltip = ({ active, payload, label, darkMode }) => {
 };
 
 // --- Sub-Component: Habit Table Section ---
-const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit, updateHabitTitle, daysInMonth, isDarkMode }) => {
+const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit, updateHabitTitle, daysInMonth, isDarkMode, privacyMode }) => {
   const [editingId, setEditingId] = useState(null);
   const [editTitle, setEditTitle] = useState("");
   const scrollContainerRef = useRef(null); 
 
   const startEditing = (habit) => {
+    if (privacyMode) return; // Disable editing in privacy mode
     setEditingId(habit.id);
     setEditTitle(habit.title);
   };
@@ -186,29 +187,22 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
       const todayColumn = container.querySelector('[data-is-today="true"]');
       
       if (todayColumn) {
-        // Calculate center position manually
         const containerWidth = container.clientWidth;
         const columnLeft = todayColumn.offsetLeft;
         const columnWidth = todayColumn.clientWidth;
-        
-        // Target scroll position
         const targetScroll = columnLeft - (containerWidth / 2) + (columnWidth / 2);
         
         container.scrollTo({
           left: targetScroll,
-          behavior: 'auto' // Instant jump, no smooth animation that might get interrupted
+          behavior: 'auto' 
         });
       }
     };
 
-    // Run immediately after layout paint
     scrollLogic();
-    
-    // Also run after a tiny delay in case of images/fonts shifting layout
     const timer = setTimeout(scrollLogic, 100);
-    
     return () => clearTimeout(timer);
-  }, [daysArray, habits.length]); // Re-run when data changes
+  }, [daysArray, habits.length]); 
 
   if (habits.length === 0) return null;
 
@@ -280,10 +274,10 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
                           </div>
                         ) : (
                           <>
-                            <span className="font-medium text-sm text-zinc-900 dark:text-zinc-100 truncate max-w-[140px]" title={habit.title}>
+                            <span className={`font-medium text-sm text-zinc-900 dark:text-zinc-100 truncate max-w-[140px] transition-all ${privacyMode ? 'blur-sm select-none' : ''}`} title={habit.title}>
                               {habit.title}
                             </span>
-                            <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className={`flex items-center opacity-0 group-hover:opacity-100 transition-opacity ${privacyMode ? 'invisible' : ''}`}>
                               <button 
                                 onClick={() => startEditing(habit)}
                                 className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 p-1"
@@ -379,7 +373,8 @@ export default function HabitTracker() {
   
   // State for Analytics Filtering - DEFAULTS TO BUILD
   const [analyticsFilter, setAnalyticsFilter] = useState('build'); 
-  
+  const [privacyMode, setPrivacyMode] = useState(false); // New Privacy State
+
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window !== 'undefined' && window.matchMedia) {
       return window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -496,8 +491,15 @@ export default function HabitTracker() {
   const stats = useMemo(() => {
     if (habits.length === 0) return null;
 
+    // PRIVACY MASKING LOGIC FOR CHARTS
+    // If privacy mode is on, we use these 'cleanHabits' for charts instead of real habits
+    // This anonymizes them in Legend/Tooltip
+    const cleanHabits = privacyMode 
+      ? habits.map((h, i) => ({ ...h, title: `Habit ${i + 1}` })) 
+      : habits;
+
     // FILTER LOGIC
-    const filteredHabits = habits.filter(h => {
+    const filteredHabits = cleanHabits.filter(h => {
       if (analyticsFilter === 'all') return true;
       return h.type === analyticsFilter;
     });
@@ -521,7 +523,7 @@ export default function HabitTracker() {
       };
     });
 
-    // 2. Cumulative Trend Data
+    // 2. Cumulative Trend Data (CONSISTENCY PERCENTAGE)
     const runningCounts = {};
     filteredHabits.forEach(h => { runningCounts[h.id] = 0; });
     const todayKey = formatDateKey(new Date());
@@ -585,11 +587,11 @@ export default function HabitTracker() {
     // If 'all' is selected, we DEFAULT to BUILD habits only to prevent inflation
     // If specific filter is selected (e.g. 'break'), we show that specific success
     const successHabits = analyticsFilter === 'all' 
-      ? habits.filter(h => h.type === 'build') 
+      ? cleanHabits.filter(h => h.type === 'build') 
       : filteredHabits;
     
     successHabits.forEach(h => {
-      const isChecked = h.completedDates?.[todayKey];
+      const isChecked = h.completedDates?.[formatDateKey(new Date())];
       if (h.type === 'build') {
         if (isChecked) successCount++;
       } else {
@@ -614,7 +616,7 @@ export default function HabitTracker() {
       totalHabits: totalForSuccess, 
       filteredHabits 
     };
-  }, [habits, daysArray, daysInMonth, year, month, analyticsFilter]);
+  }, [habits, daysArray, daysInMonth, year, month, analyticsFilter, privacyMode]);
 
   const buildHabits = habits.filter(h => h.type === 'build');
   const breakHabits = habits.filter(h => h.type === 'break');
@@ -667,6 +669,16 @@ export default function HabitTracker() {
                 <button onClick={() => setCurrentDate(new Date(year, month + 1, 1))} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-500 dark:text-zinc-400"><ChevronRight className="w-4 h-4" /></button>
              </div>
              <div className="h-8 w-px bg-zinc-200 dark:bg-zinc-800 mx-1 hidden md:block"></div>
+             
+             {/* Privacy Toggle */}
+             <button 
+                onClick={() => setPrivacyMode(!privacyMode)} 
+                className={`p-2 rounded-md border transition-colors ${privacyMode ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-white dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'}`}
+                title="Privacy Mode (Blur for Screenshots)"
+             >
+                {privacyMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+             </button>
+
              <button onClick={() => setDarkMode(!darkMode)} className="bg-white dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 p-2 rounded-md border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors">{darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}</button>
              <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden border border-zinc-200 dark:border-zinc-700">
                 {user.photoURL ? <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-zinc-400"><User className="w-4 h-4" /></div>}
@@ -712,7 +724,7 @@ export default function HabitTracker() {
                <span className="text-lg font-bold text-zinc-900 dark:text-zinc-100 font-mono">{habits.length}</span>
             </div>
             
-            {/* New Analytics Filter Control */}
+            {/* Analytics Filter Control */}
             <div className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
                <h3 className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3 flex items-center gap-2"><Filter className="w-3 h-3" /> Analytics View</h3>
                <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-950 p-1 rounded-md border border-zinc-200 dark:border-zinc-800">
@@ -727,8 +739,8 @@ export default function HabitTracker() {
           <div className="space-y-8 min-w-0">
             {/* Tables */}
             <div className="space-y-6">
-              <HabitSection title="Build Habits" type="build" habits={buildHabits} daysArray={daysArray} toggleHabit={toggleHabit} deleteHabit={deleteHabit} updateHabitTitle={updateHabitTitle} daysInMonth={daysInMonth} isDarkMode={darkMode} />
-              <HabitSection title="Break Habits" type="break" habits={breakHabits} daysArray={daysArray} toggleHabit={toggleHabit} deleteHabit={deleteHabit} updateHabitTitle={updateHabitTitle} daysInMonth={daysInMonth} isDarkMode={darkMode} />
+              <HabitSection title="Build Habits" type="build" habits={buildHabits} daysArray={daysArray} toggleHabit={toggleHabit} deleteHabit={deleteHabit} updateHabitTitle={updateHabitTitle} daysInMonth={daysInMonth} isDarkMode={darkMode} privacyMode={privacyMode} />
+              <HabitSection title="Break Habits" type="break" habits={breakHabits} daysArray={daysArray} toggleHabit={toggleHabit} deleteHabit={deleteHabit} updateHabitTitle={updateHabitTitle} daysInMonth={daysInMonth} isDarkMode={darkMode} privacyMode={privacyMode} />
             </div>
             
             {habits.length === 0 && (
@@ -864,7 +876,7 @@ export default function HabitTracker() {
               <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
                  <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><CheckCircle className="w-4 h-4 text-zinc-500" /> Daily Focus</h3>
-                    <span className="text-[10px] font-medium px-2 py-1 bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-500">Today ({analyticsFilter === 'break' ? 'Break' : 'Build'})</span>
+                    <span className="text-[10px] font-medium px-2 py-1 bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-500">Today ({analyticsFilter === 'all' ? 'Build Only' : analyticsFilter === 'break' ? 'Break' : 'Build'})</span>
                  </div>
                  <div className="h-64 w-full flex items-center justify-center relative">
                    {stats?.totalHabits > 0 ? (
