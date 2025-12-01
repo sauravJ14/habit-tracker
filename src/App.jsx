@@ -245,7 +245,11 @@ const HabitSection = ({ title, type, habits, daysArray, toggleHabit, deleteHabit
           </thead>
           <tbody>
             {habits.map((habit) => {
-              const checkedCount = Object.keys(habit.completedDates || {}).length;
+              // Filter completedDates for the current month to calculate progress correctly per month
+              const currentMonthPrefix = formatDateKey(new Date(daysArray[0].dateKey)).slice(0, 7); // YYYY-MM
+              const monthCompletedDates = Object.keys(habit.completedDates || {}).filter(date => date.startsWith(currentMonthPrefix));
+              const checkedCount = monthCompletedDates.length;
+              
               const habitGoal = habit.goal || daysInMonth;
               let actualScore = 0;
               if (habit.type === 'build') {
@@ -506,7 +510,11 @@ export default function HabitTracker() {
 
     // 1. Goal Analysis Data
     const goalData = filteredHabits.map((h) => {
-      const checkedCount = Object.keys(h.completedDates || {}).length;
+      // Filter completed dates to only those in the current month for correct "Actual" score
+      const currentMonthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+      const monthCompletedDates = Object.keys(h.completedDates || {}).filter(date => date.startsWith(currentMonthPrefix));
+      const checkedCount = monthCompletedDates.length;
+      
       const goal = h.goal || daysInMonth;
       let actual = 0;
       if (h.type === 'build') {
@@ -549,7 +557,7 @@ export default function HabitTracker() {
       return dataPoint;
     });
 
-    // 3. Weekday Consistency
+    // 3. Weekday Consistency (Uses filtered set)
     const weekdayCounts = { 'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0 };
     const weekdayOpportunities = { 'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0 };
 
@@ -559,6 +567,7 @@ export default function HabitTracker() {
 
       if (d.dateKey <= todayKey) {
         if (weekdayOpportunities[shortDay] !== undefined) {
+           // Add opportunities for every filtered habit
            weekdayOpportunities[shortDay] += filteredHabits.length;
            
            filteredHabits.forEach(h => {
@@ -591,7 +600,7 @@ export default function HabitTracker() {
       : filteredHabits;
     
     successHabits.forEach(h => {
-      const isChecked = h.completedDates?.[formatDateKey(new Date())];
+      const isChecked = h.completedDates?.[todayKey];
       if (h.type === 'build') {
         if (isChecked) successCount++;
       } else {
