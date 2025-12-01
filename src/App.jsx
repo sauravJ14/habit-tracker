@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight, Trash2, Check, X, Activity, 
   TrendingUp, ShieldAlert, Trophy, Calendar, Leaf, Skull, Plus, LogOut, User,
   Moon, Sun, Lock, Smartphone, Target, Zap, CheckCircle, LayoutGrid, MoreHorizontal,
-  Pencil, Save, Filter, Eye, EyeOff
+  Pencil, Save, Filter, Eye, EyeOff, Grid
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -152,6 +152,81 @@ const CustomAreaTooltip = ({ active, payload, label, darkMode }) => {
     );
   }
   return null;
+};
+
+// --- Sub-Component: Yearly Heatmap ---
+const YearlyHeatmap = ({ data, year, darkMode }) => {
+  // Group data by week for the grid layout
+  const weeks = useMemo(() => {
+    const weekData = [];
+    let currentWeek = [];
+    
+    // Pad the start if the year doesn't start on Sunday
+    const firstDay = new Date(year, 0, 1).getDay();
+    for (let i = 0; i < firstDay; i++) {
+      currentWeek.push(null);
+    }
+
+    data.forEach(day => {
+      currentWeek.push(day);
+      if (currentWeek.length === 7) {
+        weekData.push(currentWeek);
+        currentWeek = [];
+      }
+    });
+    
+    if (currentWeek.length > 0) {
+      weekData.push(currentWeek);
+    }
+    
+    return weekData;
+  }, [data, year]);
+
+  const getIntensityColor = (level) => {
+    // GitHub-like green scale
+    if (level === 0) return darkMode ? 'bg-zinc-800' : 'bg-zinc-100';
+    if (level === 1) return 'bg-emerald-200 dark:bg-emerald-900/40';
+    if (level === 2) return 'bg-emerald-300 dark:bg-emerald-800/60';
+    if (level === 3) return 'bg-emerald-400 dark:bg-emerald-600';
+    return 'bg-emerald-500 dark:bg-emerald-500';
+  };
+
+  return (
+    <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between mb-4">
+         <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+           <Grid className="w-4 h-4 text-zinc-500" /> Activity Map
+         </h3>
+         <span className="text-[10px] font-medium px-2 py-1 bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-500">{year}</span>
+      </div>
+      
+      <div className="overflow-x-auto pb-2 scrollbar-hide">
+        <div className="flex gap-1 min-w-max">
+          {weeks.map((week, wIdx) => (
+            <div key={wIdx} className="flex flex-col gap-1">
+              {week.map((day, dIdx) => (
+                <div 
+                  key={dIdx}
+                  className={`w-2.5 h-2.5 rounded-sm ${day ? getIntensityColor(day.level) : 'bg-transparent'}`}
+                  title={day ? `${day.date}: ${day.score}% Success` : ''}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      <div className="flex items-center justify-end gap-2 mt-3 text-[10px] text-zinc-400">
+        <span>Less</span>
+        <div className={`w-2.5 h-2.5 rounded-sm ${getIntensityColor(0)}`}></div>
+        <div className={`w-2.5 h-2.5 rounded-sm ${getIntensityColor(1)}`}></div>
+        <div className={`w-2.5 h-2.5 rounded-sm ${getIntensityColor(2)}`}></div>
+        <div className={`w-2.5 h-2.5 rounded-sm ${getIntensityColor(3)}`}></div>
+        <div className={`w-2.5 h-2.5 rounded-sm ${getIntensityColor(4)}`}></div>
+        <span>More</span>
+      </div>
+    </div>
+  );
 };
 
 // --- Sub-Component: Habit Table Section ---
@@ -496,8 +571,6 @@ export default function HabitTracker() {
     if (habits.length === 0) return null;
 
     // PRIVACY MASKING LOGIC FOR CHARTS
-    // If privacy mode is on, we use these 'cleanHabits' for charts instead of real habits
-    // This anonymizes them in Legend/Tooltip
     const cleanHabits = privacyMode 
       ? habits.map((h, i) => ({ ...h, title: `Habit ${i + 1}` })) 
       : habits;
@@ -510,7 +583,7 @@ export default function HabitTracker() {
 
     // 1. Goal Analysis Data
     const goalData = filteredHabits.map((h) => {
-      // Filter completed dates to only those in the current month for correct "Actual" score
+      // Filter completed dates to only those in the current month
       const currentMonthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
       const monthCompletedDates = Object.keys(h.completedDates || {}).filter(date => date.startsWith(currentMonthPrefix));
       const checkedCount = monthCompletedDates.length;
@@ -557,7 +630,7 @@ export default function HabitTracker() {
       return dataPoint;
     });
 
-    // 3. Weekday Consistency (Uses filtered set)
+    // 3. Weekday Consistency
     const weekdayCounts = { 'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0 };
     const weekdayOpportunities = { 'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0 };
 
@@ -567,7 +640,6 @@ export default function HabitTracker() {
 
       if (d.dateKey <= todayKey) {
         if (weekdayOpportunities[shortDay] !== undefined) {
-           // Add opportunities for every filtered habit
            weekdayOpportunities[shortDay] += filteredHabits.length;
            
            filteredHabits.forEach(h => {
@@ -589,18 +661,15 @@ export default function HabitTracker() {
        return { subject: day, A: percent, fullMark: 100 };
     });
 
-    // 4. Daily Progress (Filtered for SUCCESS METRIC)
+    // 4. Daily Progress
     let successCount = 0;
     
-    // Use analyticsFilter to decide which habits to count for "Today's Success"
-    // If 'all' is selected, we DEFAULT to BUILD habits only to prevent inflation
-    // If specific filter is selected (e.g. 'break'), we show that specific success
     const successHabits = analyticsFilter === 'all' 
       ? cleanHabits.filter(h => h.type === 'build') 
       : filteredHabits;
     
     successHabits.forEach(h => {
-      const isChecked = h.completedDates?.[todayKey];
+      const isChecked = h.completedDates?.[formatDateKey(new Date())];
       if (h.type === 'build') {
         if (isChecked) successCount++;
       } else {
@@ -616,6 +685,54 @@ export default function HabitTracker() {
       { name: 'Remaining', value: remainingCount }
     ];
 
+    // 5. Yearly Heatmap Data
+    const yearlyHeatmapData = [];
+    const startOfYear = new Date(year, 0, 1);
+    const endOfYear = new Date(year, 11, 31);
+    
+    for (let d = new Date(startOfYear); d <= endOfYear; d.setDate(d.getDate() + 1)) {
+       const dateKey = formatDateKey(d);
+       const isFuture = dateKey > todayKey;
+       
+       if (!isFuture) {
+         let dayScore = 0;
+         let activeHabitsCount = 0;
+         
+         cleanHabits.forEach(h => {
+            // Simple active check: Assumes habits active all year. 
+            // Could filter by createdAt if available and reliable.
+            if (h.createdAt <= d.getTime()) {
+               activeHabitsCount++;
+               const isChecked = h.completedDates?.[dateKey];
+               if (h.type === 'build') {
+                  if (isChecked) dayScore++;
+               } else {
+                  if (!isChecked) dayScore++;
+               }
+            }
+         });
+         
+         // Calculate Intensity (0-4)
+         let level = 0;
+         if (activeHabitsCount > 0) {
+            const percent = dayScore / activeHabitsCount;
+            if (percent === 0) level = 0;
+            else if (percent <= 0.25) level = 1;
+            else if (percent <= 0.50) level = 2;
+            else if (percent <= 0.75) level = 3;
+            else level = 4;
+         }
+         
+         yearlyHeatmapData.push({ 
+           date: dateKey, 
+           score: activeHabitsCount > 0 ? Math.round((dayScore / activeHabitsCount) * 100) : 0,
+           level 
+         });
+       } else {
+         yearlyHeatmapData.push(null); // Future
+       }
+    }
+
     return { 
       cumulativeData, 
       goalData, 
@@ -623,7 +740,8 @@ export default function HabitTracker() {
       dailyProgressData, 
       completedToday: successCount, 
       totalHabits: totalForSuccess, 
-      filteredHabits 
+      filteredHabits,
+      yearlyHeatmapData
     };
   }, [habits, daysArray, daysInMonth, year, month, analyticsFilter, privacyMode]);
 
@@ -746,6 +864,12 @@ export default function HabitTracker() {
 
           {/* Content */}
           <div className="space-y-8 min-w-0">
+            
+            {/* Heatmap Section */}
+            {stats?.yearlyHeatmapData && (
+               <YearlyHeatmap data={stats.yearlyHeatmapData} year={year} darkMode={darkMode} />
+            )}
+
             {/* Tables */}
             <div className="space-y-6">
               <HabitSection title="Build Habits" type="build" habits={buildHabits} daysArray={daysArray} toggleHabit={toggleHabit} deleteHabit={deleteHabit} updateHabitTitle={updateHabitTitle} daysInMonth={daysInMonth} isDarkMode={darkMode} privacyMode={privacyMode} />
